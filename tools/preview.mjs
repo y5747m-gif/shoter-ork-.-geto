@@ -100,53 +100,112 @@ function viewFor(match, me, opts = {}) {
     myId: 'you', myTeam: me.team, teams: true,
     damageFlash: opts.damageFlash || 0, shotDirs: opts.shotDirs || [], smokes: opts.smokes || [],
     dropPhase: !!opts.dropPhase, weaponSkins: {}, fogOfWar: false, scope: opts.scope || 1,
+    // بيانات المنظور ثلاثي الأبعاد
+    firstPerson: opts.firstPerson !== undefined ? opts.firstPerson : true,
+    view3d: opts.view3d || 'fps',
+    camYaw: opts.yaw !== undefined ? opts.yaw : me.aim,
+    camPitch: opts.pitch || 0,
+    ads: !!opts.ads,
   };
 }
 
 const renderer = new Renderer(makeCanvas(W, H));
 renderer.dpr = 1;
+renderer.r3.dpr = 1;
+renderer.setQuality('high');
+/** يرسم n إطاراً حتى تستقر الكاميرا */
+function render3D(view, frames = 5) {
+  renderer.r3.cam.yaw = view.camYaw; renderer.r3.cam.pitch = view.camPitch;
+  renderer.r3.cam.fovX = 90;
+  for (let i = 0; i < frames; i++) renderer.frame(view, 1 / 60);
+}
 
-/* ---------- ١) مشاهد المعركة ---------- */
+/* ---------- ١) مشاهد المعركة بمنظور الشخص الأول (٣D) ---------- */
 const scenes = [
-  { map: 'ork_island', seed: 111, name: '01-معركة-جزيرة-أورك', zoomNearEnemies: true },
-  { map: 'neo_city', seed: 222, name: '02-مدينة-النيون', zoomNearEnemies: true },
-  { map: 'volcano', seed: 333, name: '03-قلب-البركان', zoomNearEnemies: true },
-  { map: 'sand_storm', seed: 444, name: '04-صحراء-العواصف', zoomNearEnemies: true },
-  { map: 'snow_peak', seed: 555, name: '05-قمة-الجليد', zoomNearEnemies: true },
+  { map: 'ork_island', seed: 111, name: '01-معركة-جزيرة-أورك' },
+  { map: 'neo_city', seed: 222, name: '02-مدينة-النيون' },
+  { map: 'volcano', seed: 333, name: '03-قلب-البركان' },
+  { map: 'sand_storm', seed: 444, name: '04-صحراء-العواصف' },
+  { map: 'snow_peak', seed: 555, name: '05-قمة-الجليد' },
 ];
 for (const sc of scenes) {
   const { match, me } = runMatch(sc.map, 150, 39, sc.seed);
-  // انقل الكاميرا إلى مجموعة أعداء أحياء لأفضل مشهد
+  // ضع اللاعب وسط مجموعة أعداء أحياء وانظر نحوهم
   const aliveEnemies = match.players.filter(p => p.alive && p.bot && p.team !== me.team);
   let cluster = null, bestN = 0;
   for (const e of aliveEnemies) {
     const n = aliveEnemies.filter(o => sim.dist(o.x, o.y, e.x, e.y) < 700).length;
     if (n > bestN) { bestN = n; cluster = e; }
   }
-  if (cluster) { me.x = cluster.x + 220; me.y = cluster.y + 160; }
-  me.aim = Math.atan2(cluster ? cluster.y - me.y : 1, cluster ? cluster.x - me.x : 1);
-  me.walking = true;
-  // رصاص وشرارات لتزيين المشهد
-  for (let i = 0; i < 6; i++) {
-    match.bullets.push({ id: 'pb' + i, x: me.x + Math.cos(me.aim + i * 0.05) * (100 + i * 40), y: me.y + Math.sin(me.aim + i * 0.05) * (100 + i * 40), vx: 0, vy: 0, dmg: 45, owner: 'you', team: 0, weapon: 'akm', ttl: 1, silent: false, a: me.aim });
+  if (cluster) {
+    const ang = Math.atan2(cluster.y - me.y, cluster.x - me.x);
+    me.x = cluster.x - Math.cos(ang) * 420;
+    me.y = cluster.y - Math.sin(ang) * 420;
+    me.aim = ang;
   }
-  const view = viewFor(match, me, { scope: 1 });
-  renderer.cam.x = me.x; renderer.cam.y = me.y;
-  renderer.frame(view, 1 / 60);
-  renderer.frame(view, 1 / 60);
+  me.dropState = 'landed'; me.z = 0; me.vx = 120; me.vy = 0;
+  // ادفع الكاميرا خارج أي جدار/شجرة حتى لا يبدأ المشهد داخل عائق
+  for (let i = 0; i < 4; i++) sim.resolveCollisions(match.world, me, 16);
+  // رصاص وشرارات لتزيين المشهد
+  for (let i = 0; i < 5; i++) {
+    match.bullets.push({ id: 'pb' + i, x: me.x + Math.cos(me.aim) * (200 + i * 90), y: me.y + Math.sin(me.aim) * (200 + i * 90), vx: 0, vy: 0, dmg: 45, owner: 'you', team: 0, weapon: 'akm', ttl: 1, silent: false, a: me.aim });
+  }
+  const view = viewFor(match, me, { yaw: me.aim, pitch: -0.02, firstPerson: true, view3d: 'fps' });
+  renderer.setMode('fps');
+  render3D(view, 6);
   fs.writeFileSync(path.join(OUT, sc.name + '.png'), renderer.cv.toBuffer('image/png'));
-  console.log('🖼️ ', sc.name + '.png   | لاعبون أحياء:', match.aliveCount, '| عوائق:', match.world.obstacles.length, '| غنائم:', match.loot.length);
+  console.log('🖼️ ', sc.name + '.png   | أحياء:', match.aliveCount, '| أوجه مرسومة:', renderer.r3.stats.faces, '| كائنات:', renderer.r3.stats.objects);
 }
 
-/* ---------- ٢) مشهد الهبوط بالمظلة ---------- */
+/* ---------- ١ب) أشكال اللاعبين عن قرب + منظور الشخص الثالث ---------- */
+{
+  const { match, me } = runMatch('neo_city', 909, 24, 909);
+  me.dropState = 'landed'; me.z = 0;
+  me.x = 0; me.y = 0; me.aim = 0;
+  // ساحة مكشوفة: عطّل العوائق القريبة (وأسقفها) حتى تظهر الأشكال بوضوح
+  for (const o of match.world.obstacles) {
+    if (Math.hypot(o.x, o.y) < 1100) o.destroyed = true;
+  }
+  match.world.decals = match.world.decals.filter(d => !(d.kind === 'building' && Math.hypot(d.x, d.y) < 1400));
+  // صُفّ مقاتلين أمامنا على مسافات مختلفة لإظهار الأشكال
+  const chars = ['orkking', 'tannin', 'asad', 'yaser', 'majhool', 'shadi'];
+  const skins = ['out_orkking', 'out_tannin', 'out_asad', 'out_yaser', 'out_majhool', 'out_shadi'];
+  for (let i = 0; i < 6; i++) {
+    const b = match.players[1 + i];
+    b.alive = true; b.hp = 100 - i * 7; b.charId = chars[i]; b.skinId = skins[i];
+    const ang = -0.55 + i * 0.22;
+    const d = 160 + (i % 3) * 130;
+    b.x = Math.sin(ang) * d; b.y = -Math.cos(ang) * d;
+    b.aim = Math.atan2(me.y - b.y, me.x - b.x);
+    b.dropState = 'landed'; b.z = 0; b.vest = 'vest3'; b.helmet = 'helm3'; b.bag = 'bag3';
+    b.vx = 40; b.vy = 0; b.walking = i % 2 === 0;
+  }
+  me.aim = -Math.PI / 2;   // انظر شمالاً نحو المصطَفّين
+  const view = viewFor(match, me, { yaw: me.aim, pitch: -0.03, firstPerson: true, view3d: 'fps' });
+  renderer.setMode('fps');
+  render3D(view, 6);
+  fs.writeFileSync(path.join(OUT, '06-منظور-الشخص-الأول.png'), renderer.cv.toBuffer('image/png'));
+  console.log('🖼️  06-منظور-الشخص-الأول.png  | أوجه:', renderer.r3.stats.faces);
+
+  // الثالث: نرى جسم شخصيتنا كاملاً
+  const view3 = viewFor(match, me, { yaw: me.aim, pitch: 0.06, firstPerson: false, view3d: 'tps' });
+  renderer.setMode('tps');
+  render3D(view3, 10);
+  fs.writeFileSync(path.join(OUT, '07-منظور-الشخص-الثالث.png'), renderer.cv.toBuffer('image/png'));
+  console.log('🖼️  07-منظور-الشخص-الثالث.png');
+  renderer.setMode('fps');
+}
+
+/* ---------- ٢) مشهد الهبوط بالمظلة (ثلاثي الأبعاد) ---------- */
 {
   const { match, me } = runMatch('ork_island', 20, 30, 999);
-  me.dropState = 'parachute'; me.z = 240; me.x = 300; me.y = -200;
-  const view = viewFor(match, me, { dropPhase: true });
-  renderer.cam.x = me.x; renderer.cam.y = me.y;
-  renderer.frame(view, 1 / 60);
-  fs.writeFileSync(path.join(OUT, '06-هبوط-بالمظلة.png'), renderer.cv.toBuffer('image/png'));
-  console.log('🖼️  06-هبوط-بالمظلة.png');
+  me.dropState = 'parachute'; me.z = 320; me.x = 300; me.y = -200;
+  const view = viewFor(match, me, { dropPhase: true, yaw: 0.6, pitch: -0.18, firstPerson: false, view3d: 'tps' });
+  renderer.setMode('tps');
+  render3D(view, 10);
+  fs.writeFileSync(path.join(OUT, '08-هبوط-بالمظلة.png'), renderer.cv.toBuffer('image/png'));
+  console.log('🖼️  08-هبوط-بالمظلة.png');
+  renderer.setMode('fps');
 }
 
 /* ---------- ٣) بورتريهات الشخصيات ---------- */
@@ -164,8 +223,8 @@ for (const sc of scenes) {
     uiMod.drawPortrait(ctx, cw, chh, { charId: chars[i], skinId: skins[i], weaponId: 'akm', t: 1.1, weaponTint: { tint: '#7a2b12', accent: '#ff9a3d' } });
     ctx.restore();
   }
-  fs.writeFileSync(path.join(OUT, '07-شخصيات-واسكنات.png'), sheet.toBuffer('image/png'));
-  console.log('🖼️  07-شخصيات-واسكنات.png (12 شخصية باسكناتها)');
+  fs.writeFileSync(path.join(OUT, '09-شخصيات-واسكنات.png'), sheet.toBuffer('image/png'));
+  console.log('🖼️  09-شخصيات-واسكنات.png (12 شخصية باسكناتها)');
 }
 
 /* ---------- ٤) أشكال الخرائط الخمس (نستخدم نفس كود الواجهة) ---------- */
@@ -199,7 +258,7 @@ for (const sc of scenes) {
     ctx.fillText(m.ar, dw / 2, dh - 10);
     ctx.restore();
   });
-  fs.writeFileSync(path.join(OUT, '08-الخرائط-الخمس.png'), sheet.toBuffer('image/png'));
-  console.log('🖼️  08-الخرائط-الخمس.png');
+  fs.writeFileSync(path.join(OUT, '10-الخرائط-الخمس.png'), sheet.toBuffer('image/png'));
+  console.log('🖼️  10-الخرائط-الخمس.png');
 }
 console.log('\n✅ كل الصور في:', OUT);

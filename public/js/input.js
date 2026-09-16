@@ -1,6 +1,8 @@
 /**
  * ORK ZONE — client/input.js
  * التحكم: لوحة مفاتيح + ماوس (كمبيوتر) و أزرار لمس + عصا حركة (هاتف).
+ * في الوضع ثلاثي الأبعاد (منظور الشخص الأول) يعمل قفل المؤشر (Pointer Lock) للنظر حولك،
+ * وتُحوَّل مفاتيح WASD إلى اتجاه الحركة نسبةً لاتجاه النظر.
  */
 export class Input2 {
   constructor(canvas) {
@@ -15,6 +17,12 @@ export class Input2 {
     this.autoFire = false;
     this.aimAssist = true;
     this.swapQueued = null;
+    /** النظر ثلاثي الأبعاد: yaw دوران أفقي، pitch ارتفاع النظر (راديان) */
+    this.look = { yaw: 0, pitch: 0 };
+    this.fps = true;              // هل نحن في وضع ثلاثي الأبعاد؟
+    this.locked = false;          // هل المؤشر مقفول؟
+    this.pitchLimit = 0.42;       // ±٢٤° تقريباً (المحاكاة ثنائية الأبعاد في الأساس)
+    this._touchLook = null;
     this._bind();
   }
   get isTouch() { return this.touchMode; }
@@ -28,10 +36,27 @@ export class Input2 {
     });
     addEventListener('keyup', e => this.keys.delete(e.code));
     addEventListener('blur', () => this.keys.clear());
-    this.cv.addEventListener('mousemove', e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; });
-    this.cv.addEventListener('mousedown', e => { if (e.button === 0) this.mouse.down = true; if (e.button === 2) this.mouse.right = true; this.onMouseDown(e.button); });
+    this.cv.addEventListener('mousemove', e => {
+      this.mouse.x = e.clientX; this.mouse.y = e.clientY;
+      if (this.fps && this.locked) this.lookBy(e.movementX || 0, e.movementY || 0);
+    });
+    this.cv.addEventListener('mousedown', e => {
+      if (e.button === 0) this.mouse.down = true;
+      if (e.button === 2) this.mouse.right = true;
+      if (this.fps && !this.locked) this.requestLock();
+      this.onMouseDown(e.button);
+    });
     addEventListener('mouseup', e => { if (e.button === 0) this.mouse.down = false; if (e.button === 2) this.mouse.right = false; });
     this.cv.addEventListener('contextmenu', e => e.preventDefault());
+    // قفل المؤشر
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('pointerlockchange', () => {
+        this.locked = (document.pointerLockElement === this.cv);
+        if (!this.locked) { this.mouse.down = false; this.mouse.right = false; }
+        if (this.onLockChange) this.onLockChange(this.locked);
+      });
+      document.addEventListener('pointerlockerror', () => { this.locked = false; });
+    }
     addEventListener('wheel', e => { this.actions.push({ a: 'swapDelta', v: Math.sign(e.deltaY) }); }, { passive: true });
 
     // لمس
@@ -76,18 +101,43 @@ export class Input2 {
     }
     const firstTouch = () => { this.touchMode = true; window.removeEventListener('touchstart', firstTouch); };
     addEventListener('touchstart', firstTouch, { passive: true });
-    // لمس الشاشة للتصويب/الرمي (النصف الأيمن)
+    // لمس الشاشة: سحب = النظر حولك (ثلاثي الأبعاد)، وفي الوضع القديم = تصويب/رمي
     this.cv.addEventListener('touchstart', (e) => {
       for (const t of e.changedTouches) {
-        if (t.clientX > innerWidth * 0.35) { this.mouse.x = t.clientX; this.mouse.y = t.clientY; this.mouse.down = true; this.touchAimId = t.identifier; }
+        if (t.clientX > innerWidth * 0.35) {
+          this.mouse.x = t.clientX; this.mouse.y = t.clientY;
+          if (this.fps) { this.touchAimId = t.identifier; this._touchLook = { x: t.clientX, y: t.clientY }; }
+          else { this.mouse.down = true; this.touchAimId = t.identifier; }
+        }
       }
     }, { passive: true });
     this.cv.addEventListener('touchmove', (e) => {
-      for (const t of e.changedTouches) if (t.identifier === this.touchAimId) { this.mouse.x = t.clientX; this.mouse.y = t.clientY; }
+      for (const t of e.changedTouches) {
+        if (t.identifier !== this.touchAimId) continue;
+        if (this.fps) {
+          if (this._touchLook) this.lookBy((t.clientX - this._touchLook.x) * 2.2, (t.clientY - this._touchLook.y) * 2.2);
+          this._touchLook = { x: t.clientX, y: t.clientY };
+        } else { this.mouse.x = t.clientX; this.mouse.y = t.clientY; }
+      }
     }, { passive: true });
-    const up = (e) => { for (const t of e.changedTouches) if (t.identifier === this.touchAimId) { this.mouse.down = false; this.touchAimId = null; } };
+    const up = (e) => { for (const t of e.changedTouches) if (t.identifier === this.touchAimId) { this.mouse.down = false; this.touchAimId = null; this._touchLook = null; } };
     this.cv.addEventListener('touchend', up);
     this.cv.addEventListener('touchcancel', up);
+  }
+  /** تحريك النظر (ماوس/لمس) */
+  lookBy(dx, dy) {
+    const s = 0.0022 * (this.sens || 1);
+    this.look.yaw += dx * s;
+    this.look.pitch = Math.max(-this.pitchLimit, Math.min(this.pitchLimit, this.look.pitch - dy * s));
+    if (this.look.yaw > Math.PI) this.look.yaw -= Math.PI * 2;
+    else if (this.look.yaw < -Math.PI) this.look.yaw += Math.PI * 2;
+  }
+  /** طلب قفل المؤشر (يحتاج تفاعل مستخدم) */
+  requestLock() {
+    try { if (this.cv.requestPointerLock) this.cv.requestPointerLock(); } catch { }
+  }
+  releaseLock() {
+    try { if (document.exitPointerLock) document.exitPointerLock(); } catch { }
   }
   onTouchBtn(name, down) {
     if (!down) return;
@@ -138,7 +188,15 @@ export class Input2 {
     if (k.has('KeyD') || k.has('ArrowRight')) mx += 1;
     if (this.stick.active) { mx += this.stick.dx; my += this.stick.dy; }
     const ml = Math.hypot(mx, my); if (ml > 1) { mx /= ml; my /= ml; }
-    const aim = this.aimAngle(camera, myPlayer);
+    let aim = this.aimAngle(camera, myPlayer);
+    if (this.fps) {
+      // تحويل الحركة المحلية (أمام/يمين) إلى اتجاهات العالم حسب اتجاه النظر
+      const f = -my, r = mx;
+      const cy = Math.cos(this.look.yaw), sy = Math.sin(this.look.yaw);
+      mx = f * cy - r * sy;
+      my = f * sy + r * cy;
+      aim = this.look.yaw;
+    }
     const sprint = k.has('ShiftLeft') || k.has('ShiftRight') || (this.touchMode && ml > 0.85 && !this.mouse.down);
     const aiming = this.mouse.right || !!this.touchBtns.aim;
     const shoot = this.mouse.down || this.touchBtns.fire || (this.autoFire && aiming);
@@ -150,6 +208,7 @@ export class Input2 {
     };
   }
   aimAngle(camera, me) {
+    if (this.fps) return this.look.yaw;
     if (!me) return 0;
     const sx = this.mouse.x, sy = this.mouse.y;
     const k = (this.sens || 1) / camera.z;   // الحساسية تكبّر/تصغّر مسافة التصويب

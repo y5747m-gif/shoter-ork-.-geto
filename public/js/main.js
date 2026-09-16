@@ -159,6 +159,16 @@ class App {
     $('set-autofire').onchange = (e) => { this.settings.autofire = e.target.checked; this.session.input.autoFire = e.target.checked; };
     $('set-touch').onchange = (e) => { this.settings.touch = e.target.checked; $('touch-ui').classList.toggle('hidden', !e.target.checked || !this.session.running); };
     $('set-blood').onchange = (e) => { this.settings.blood = e.target.checked; this.session.renderer.bloodFx = e.target.checked; };
+    $('set-view').onchange = (e) => {
+      this.session.renderer.setMode(e.target.value);
+      this.session.input.fps = this.session.renderer.is3D;
+      this.session.updateLookHint();
+      this.ui.toast(this.session.renderer.is3D ? '🎮 منظور ثلاثي الأبعاد: ' + (this.session.renderer.mode === 'fps' ? 'الشخص الأول' : 'الشخص الثالث') : '🕹️ منظور ثنائي الأبعاد من الأعلى', 'ok');
+    };
+    // النقر على الشاشة أثناء اللعب = قفل المؤشر (للنظر بالماوس)
+    $('game-canvas').addEventListener('click', () => { if (this.session.running) this.session.lockLook(); });
+    if (this.session.input) this.session.input.onLockChange = () => this.session.updateLookHint();
+    document.addEventListener('pointerlockchange', () => this.session.updateLookHint());
     document.addEventListener('pointerdown', () => this.audio.resume(), { once: false });
   }
   applySettings() {
@@ -174,9 +184,16 @@ class App {
     this.session.input.autoFire = !!this.settings.autofire;
     this.session.input.sens = this.settings.sens ?? 1;
     this.session.renderer.bloodFx = this.settings.blood !== false;
+    // منظور اللعب (ثلاثي الأبعاد أول/ثالث أو ثنائي الأبعاد)
+    const viewMode = this.settings.view || this.session.renderer.mode || 'fps';
+    this.session.renderer.setMode(viewMode);
+    this.session.input.fps = this.session.renderer.is3D;
+    const sv = $('set-view');
+    if (sv) sv.value = this.session.renderer.mode;
   }
   saveSettings() {
     this.settings.quality = this.quality;
+    this.settings.view = this.session.renderer.mode;
     localStorage.setItem('orkz_settings', JSON.stringify(this.settings));
     localStorage.setItem('orkz_quality', this.quality);
     if (this.token) this.ui.saveSettings(this.settings);
@@ -280,6 +297,7 @@ class App {
         $('jump-phase').classList.remove('hidden');
         this.session.drawDropMap();
       }
+      this.session.updateLookHint();
     }, 700);
   }
 }

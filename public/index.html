@@ -290,7 +290,15 @@
   </div>
 
   <div class="hud-bottom">
-    <div class="hints glass" id="hud-hints">WASD حركة · زر الماوس الأيسر رمي · Shift جري · C انحناء · Z استلقاء · Tab النتائج</div>
+    <div class="hints glass" id="hud-hints">WASD حركة · الماوس للنظر · يسار: رمي · يمين: تصويب · Shift جري · C انحناء · Z استلقاء · Tab النتائج</div>
+  </div>
+
+  <!-- تلميح قفل المؤشر (المنظور ثلاثي الأبعاد) -->
+  <div class="look-hint hidden" id="look-hint">
+    <div class="lh-box glass">
+      <b>🖱️ انقر للتحكم بالماوس</b>
+      <span>حرك الماوس للنظر حولك · Esc للخروج من القفل</span>
+    </div>
   </div>
 
   <!-- التحكم بالماوس: الهبوط -->
@@ -363,6 +371,13 @@
       <label>الحساسية <input type="range" id="set-sens" min="20" max="300" /></label>
       <label>الجودة
         <select id="set-quality"><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high" selected>عالية</option><option value="ultra">فائقة</option></select>
+      </label>
+      <label>منظور اللعب
+        <select id="set-view">
+          <option value="fps" selected>ثلاثي الأبعاد — منظور الشخص الأول</option>
+          <option value="tps">ثلاثي الأبعاد — منظور الشخص الثالث</option>
+          <option value="top">ثنائي الأبعاد — من الأعلى (كلاسيكي)</option>
+        </select>
       </label>
       <label class="check"><input type="checkbox" id="set-autofire" /> إطلاق تلقائي عند التصويب</label>
       <label class="check"><input type="checkbox" id="set-blood" checked /> تأثيرات الدم</label>

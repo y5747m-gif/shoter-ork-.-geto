@@ -10,7 +10,8 @@
     "test": "node tests/smoke.test.js",
     "test:online": "node tests/online.test.js",
     "test:client": "node tests/client.test.js",
-    "test:all": "node tests/smoke.test.js && node tests/client.test.js && node tests/online.test.js",
+    "test:render": "node tests/render3d.test.js",
+    "test:all": "node tests/smoke.test.js && node tests/render3d.test.js && node tests/client.test.js && node tests/online.test.js",
     "previews": "node tools/preview.mjs"
   },
   "engines": {
