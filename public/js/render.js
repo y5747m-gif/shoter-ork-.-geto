@@ -1,27 +1,15 @@
 /**
  * ORK ZONE — client/render.js
- * محرك الرسم: الأرض والبيئة، الشخصيات (ذكور فقط)، الأسلحة، التأثيرات، الميني ماب، العاصفة.
+ * مدير الرسم: يختار بين المحرك ثلاثي الأبعاد (منظور الشخص الأول/الثالث — render3d.js)
+ * والمحرك ثنائي الأبعاد من الأعلى (المسار القديم). كما يدير الميني ماب والمؤثرات المشتركة.
  */
 import { WEAPONS, BIOMES, SKINS, CHARACTERS, ARMORS, HEALS, RARITY, ATTACHMENTS } from '/shared/gamedata.js';
+import Renderer3D, { CHAR_STYLE, M as UNITS_PER_M, EYE } from './render3d.js';
+
+export { CHAR_STYLE, UNITS_PER_M, EYE };
 
 const SKIN_MAP = Object.fromEntries(SKINS.map(s => [s.id, s]));
 const CHAR_MAP = Object.fromEntries(CHARACTERS.map(c => [c.id, c]));
-
-/* ألوان ملابس افتراضية لكل شخصية (شخصيات رجال بأزياء مختلفة) */
-const CHAR_STYLE = {
-  fahd:    { body: '#4a5b6e', hair: '#2b2b2b', hat: 'none' },
-  amer:    { body: '#3f5d3a', hair: '#1f1f1f', hat: 'cap' },
-  hakim:   { body: '#e8eef5', hair: '#333', hat: 'medic' },
-  khaled:  { body: '#232838', hair: '#111', hat: 'hood' },
-  shadi:   { body: '#4b5a35', hair: '#3a2a1a', hat: 'beret' },
-  rami:    { body: '#7a6a3a', hair: '#2b2b2b', hat: 'helmet' },
-  zaid:    { body: '#5c4a3a', hair: '#1a1a1a', hat: 'none' },
-  yaser:   { body: '#1c2026', hair: '#0d0d0d', hat: 'hood' },
-  majhool: { body: '#2f3440', hair: '#222', hat: 'mask' },
-  tannin:  { body: '#7a2b12', hair: '#101010', hat: 'none' },
-  asad:    { body: '#cfe3f5', hair: '#d8d8d8', hat: 'hood' },
-  orkking: { body: '#3a2408', hair: '#0d0d0d', hat: 'crown' },
-};
 
 function hashN(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return Math.abs(h); }
 
@@ -92,6 +80,11 @@ export class Renderer {
     this.mctx = this.mini ? this.mini.getContext('2d') : null;
     this.parts = new Particles();
     this.cam = { x: 0, y: 0, z: 0.72, shake: 0, shakeT: 0 };
+    /** وضع العرض: 'fps' = أول ثلاثي الأبعاد (افتراضي) | 'tps' = ثالث | 'top' = ثنائي الأبعاد من الأعلى */
+    this.mode = 'fps';
+    try { const saved = localStorage.getItem('orkz_view'); if (saved === 'fps' || saved === 'tps' || saved === 'top') this.mode = saved; } catch { }
+    this.r3 = new Renderer3D(canvas, this);
+    this.r3.setMode(this.mode === 'tps' ? 'tps' : 'fps');
     this.quality = 'high';
     this.time = 0;
     this.footprints = [];
@@ -100,6 +93,7 @@ export class Renderer {
     this.flashes = [];
     this.miniStatic = null;
     this.miniKey = null;
+    this.bloodFx = true;
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.resize();
     window.addEventListener('resize', () => this.resize());
@@ -113,13 +107,38 @@ export class Renderer {
     this.quality = q;
     this.dpr = q === 'low' ? 1 : q === 'medium' ? Math.min(window.devicePixelRatio || 1, 1.35) : Math.min(window.devicePixelRatio || 1, 2);
     this.resize();
+    this.r3.setQuality(q);
   }
-  shake(amount) { this.cam.shake = Math.min(22, this.cam.shake + amount); }
+  /** تبديل منظور اللعب */
+  setMode(m) {
+    this.mode = (m === 'top' || m === 'tps') ? m : 'fps';
+    this.r3.setMode(this.mode === 'tps' ? 'tps' : 'fps');
+    try { localStorage.setItem('orkz_view', this.mode); } catch { }
+  }
+  get is3D() { return this.mode !== 'top'; }
+  shake(amount) {
+    this.cam.shake = Math.min(22, this.cam.shake + amount);
+    if (this.is3D) this.r3.shake(amount);
+  }
+  /** إسقاط نقطة من العالم إلى الشاشة (يُستخدم لأرقام الضرر) */
+  worldToScreen(x, y, z) {
+    if (this.is3D) return this.r3.worldToScreen(x, y, z);
+    return { x: (x - this.cam.x) * this.cam.z + this.w / 2, y: (y - this.cam.y) * this.cam.z + this.h / 2, depth: 1, vis: true };
+  }
 
   /* ---------- الهيكل العام ---------- */
   frame(view, dt) {
     this.time += dt;
-    try { this._frame(view, dt); } catch (e) { console.warn('render', e.message); }
+    try {
+      if (this.is3D) {
+        this.r3.frame(view, dt);
+        this.r3.updateParticles(dt);
+        const me = view.players.find(p => p.id === view.myId);
+        if (this.mctx) this.drawMinimap(view, me);
+      } else {
+        this._frame(view, dt);
+      }
+    } catch (e) { console.warn('render', e && e.message); }
   }
   _frame(view, dt) {
     this.parts.update(dt);
@@ -736,6 +755,7 @@ export class Renderer {
   }
   /* ربط أحداث اللعبة بالمؤثرات */
   handleEvent(e, view) {
+    if (this.is3D) { this.r3.handleEvent(e, view); return; }
     switch (e.type) {
       case 'hit': {
         const p = view.players.find(x => x.id === e.on);

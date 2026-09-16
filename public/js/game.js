@@ -131,6 +131,7 @@ export class Session {
     this.netYou = null;
     this.dropPhase = true;
     this.dropPoint = null;
+    this._yawSynced = false;
     this.snapInfo = { zone: null, plane: null, airdrops: [], vehicles: world.vehicles.map(v => ({ id: v.id, x: v.x, y: v.y, a: v.angle, t: v.type, hp: v.hp, o: 0, dr: null })), bullets: [], grenades: [] };
     this.beginMatchUI();
     this.audio.startMusic('drop');
@@ -140,6 +141,16 @@ export class Session {
   beginMatchUI() {
     this.running = true;
     this.paused = false;
+    // مزامنة وضع الإدخال مع منظور العرض
+    this.input.fps = this.renderer.is3D;
+    this.input.look.yaw = this.you ? this.you.aim : (this.input.look.yaw || 0);
+    this.input.look.pitch = 0;
+    if (this.renderer.r3) {
+      this.renderer.r3.cam.yaw = this.input.look.yaw;
+      this.renderer.r3.cam.pitch = 0;
+      this.renderer.r3.parts.length = 0;
+      this.renderer.r3.corpses.length = 0;
+    }
     this.results = null;
     this.killfeed = []; this.chatLog = []; this.smokes = [];
     this.hitTimes = []; this.shotDirs = [];
@@ -152,13 +163,14 @@ export class Session {
     $('tdm-score').classList.toggle('hidden', this.mode !== 'tdm');
     $('pause').classList.add('hidden');
     if (this.input.isTouch) $('touch-ui').classList.remove('hidden');
+    this.updateLookHint();
     this.drawDropMap();
   }
 
   /* ============================= الحلقة ============================= */
   update(dt) {
     if (!this.running) return;
-    if (this.paused) { this.drawPaused(); return; }
+    if (this.paused) { this.drawPaused(); this.updateLookHint(); return; }
     const actions = this.input.drainActions();
     if (this.online) this.updateOnline(dt, actions); else this.updateOffline(dt, actions);
     this.render(dt);
@@ -380,9 +392,9 @@ export class Session {
     el.innerHTML = this.killfeed.map(k => `<div class="kf"><span class="k">${esc(k.killer)}</span> <span class="w">[${esc(k.weapon || '—')}]</span> <span class="v">${esc(k.victim)}</span></div>`).join('');
   }
   showDamage(dmg, x, y, head) {
-    const cam = this.renderer.cam;
-    const sx = (x - cam.x) * cam.z + innerWidth / 2 + (Math.random() - 0.5) * 30;
-    const sy = (y - cam.y) * cam.z + innerHeight / 2 + (Math.random() - 0.5) * 30;
+    const pr = this.renderer.worldToScreen(x, y, 55);
+    const sx = (pr.vis ? pr.x : innerWidth / 2) + (Math.random() - 0.5) * 30;
+    const sy = (pr.vis ? pr.y : innerHeight / 2) + (Math.random() - 0.5) * 30;
     const d = document.createElement('div');
     d.className = 'dpop' + (head ? ' head' : '');
     d.textContent = (head ? '🎯 ' : '') + Math.round(dmg);
@@ -515,11 +527,16 @@ export class Session {
     if (this.online) this.renderOnline(dt); else this.renderOffline(dt);
   }
   baseView() {
+    const r3 = this.renderer.r3;
     return {
       myId: this.online ? this.myId : 'you',
       myTeam: this.online ? this.myTeam : 0,
       teams: this.teams,
-      firstPerson: false,
+      firstPerson: this.renderer.mode === 'fps',
+      view3d: this.renderer.mode,
+      camYaw: this.input.fps ? this.input.look.yaw : undefined,
+      camPitch: this.input.fps ? this.input.look.pitch : 0,
+      ads: !!this.input.mouse.right,
       damageFlash: this.damageFlash,
       shotDirs: this.shotDirs,
       smokes: this.smokes,
@@ -527,6 +544,7 @@ export class Session {
       weaponSkins: this.weaponSkins || {},
       fogOfWar: !this.online,
       scope: 1,
+      r3cam: r3 ? r3.cam : null,
     };
   }
   renderOffline(dt) {
@@ -741,6 +759,16 @@ export class Session {
       sorted.slice(0, 50).map((p, i) => `<div class="sb-row ${p.id === myId ? 'me' : ''}"><span class="pos">#${i + 1}</span><span>${esc(p.n)}</span><span style="margin-inline-start:auto">☠️ ${p.k || 0} · 💥 ${p.dmg || 0}</span><span style="color:${p.al ? '#41e06a' : '#ff6b6b'}">${p.al ? 'حي' : 'مقصى'}</span></div>`).join('');
   }
   drawPaused() { }
+  /** تلميح "انقر للتحكم بالماوس" في المنظور ثلاثي الأبعاد */
+  updateLookHint() {
+    const el = $('look-hint');
+    if (!el) return;
+    const show = this.running && this.renderer.is3D && !this.input.locked && !this.input.isTouch && !this.paused;
+    el.classList.toggle('hidden', !show);
+  }
+  lockLook() {
+    if (this.renderer.is3D && !this.input.locked) this.input.requestLock();
+  }
 
   /* ---------- خريطة القفز ---------- */
   drawDropMap() {
@@ -804,6 +832,11 @@ export class Session {
     this.tdmScore = s.tdmScore || this.tdmScore;
     const me = (s.players || []).find(p => p.id === this.myId);
     if (this.netYou) this.netYou.pos = me;
+    if (!this._yawSynced && me) {
+      this._yawSynced = true;
+      this.input.look.yaw = me.a || 0;
+      if (this.renderer.r3) this.renderer.r3.cam.yaw = me.a || 0;
+    }
     if (me && me.st !== 'plane' && me.st !== 'wait') {
       if (this.dropPhase) { this.dropPhase = false; this.audio.startMusic('match'); }
     }
@@ -862,6 +895,8 @@ export class Session {
   }
   showResults(res, rewards) {
     this.running = false;
+    if (this.input.releaseLock) this.input.releaseLock();
+    this.updateLookHint();
     $('hud').classList.add('hidden');
     $('scr-results').classList.add('active');
     const modeName = (MODES.find(m => m.id === res.mode) || {}).ar || '';
@@ -878,6 +913,8 @@ export class Session {
   }
   quit() {
     this.running = false;
+    if (this.input.releaseLock) this.input.releaseLock();
+    this.updateLookHint();
     if (this.online) this.app.net.send({ t: 'leave' });
     this.audio.stopMusic();
     $('hud').classList.add('hidden');
