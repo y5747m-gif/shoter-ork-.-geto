@@ -62,9 +62,9 @@ export class Session {
     const seed = Math.floor(Math.random() * 1e9);
     const match = createMatch({ mapId, seed, mode, teams: mode !== 'ffa' });
     this.match = match;
-    const eq = app.profile.equipped || {};
+    const eq = app.profile?.equipped || {};
     const me = addPlayer(match, {
-      id: 'you', name: app.profile.name, team: 0, bot: false,
+      id: 'you', name: app.profile?.name || 'لاعب', team: 0, bot: false,
       charId: eq.char || 'fahd', skinId: eq.skin || 'out_basic', parachute: eq.parachute || 'pc_basic',
     });
     this.you = me;
@@ -154,6 +154,7 @@ export class Session {
     this.results = null;
     this.killfeed = []; this.chatLog = []; this.smokes = [];
     this.hitTimes = []; this.shotDirs = [];
+    $('scr-loading')?.classList.remove('active');
     $('scr-menu').classList.remove('active'); $('scr-results').classList.remove('active');
     $('scr-modes').classList.remove('active'); $('scr-room').classList.remove('active');
     $('hud').classList.remove('hidden');
@@ -180,6 +181,7 @@ export class Session {
   /* ---------- أوفلاين ---------- */
   updateOffline(dt, actions) {
     const match = this.match, me = this.you;
+    if (!match || !me) return;
     const input = this.input.read(this.renderer.cam, me, null);
     this.handleActions(actions, me, true);
     if (me.dropState === 'plane' || me.dropState === 'wait') {
@@ -515,10 +517,14 @@ export class Session {
   }
   doJump(x, y) {
     if (!this.dropPhase) return;
-    if (this.online) this.app.net.send({ t: 'action', a: 'jump', x, y });
-    else dropPlayer(this.match, this.you, x, y);
+    if (this.online) {
+      this.app.net.send({ t: 'action', a: 'jump', x, y });
+    } else {
+      if (!this.match || !this.you) return;
+      dropPlayer(this.match, this.you, x, y);
+    }
     this.dropPhase = false;
-    $('jump-phase').classList.add('hidden');
+    $('jump-phase')?.classList.add('hidden');
     this.audio.jump();
   }
 

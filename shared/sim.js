@@ -405,6 +405,7 @@ export function giveStarterKit(p, match) {
 }
 
 export function dropPlayer(match, p, x, y) {
+  if (!match || !p) return false;
   if (p.dropState !== 'plane' && p.dropState !== 'wait') return false;
   p.x = clamp(x, -match.world.half, match.world.half);
   p.y = clamp(y, -match.world.half, match.world.half);

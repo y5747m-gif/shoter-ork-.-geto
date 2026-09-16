@@ -16,9 +16,10 @@ const SKIN_MAP = Object.fromEntries(SKINS.map(s => [s.id, s]));
 
 /* ============================= رسم البورتريه (مقاتل ذكر) ============================= */
 export function drawPortrait(ctx, W, H, opts = {}) {
+  if (!ctx || !W || !H || W <= 0 || H <= 0) return;
   const { charId = 'fahd', skinId = 'out_basic', weaponId = null, t = 0, hp = 1, weaponTint = null } = opts;
   const skin = SKIN_MAP[skinId];
-  const char = CHAR_MAP[charId] || CHAR_MAP.fahd;
+  const char = CHAR_MAP[charId] || CHAR_MAP.fahd || CHARACTERS[0];
   const body = skin ? skin.body : '#4a5b6e';
   const pants = skin ? skin.pants : '#2f3a46';
   const accent = skin ? skin.accent : '#8fa3b8';
@@ -196,25 +197,35 @@ export class UI {
     const step = () => {
       this.portraitT += 0.033;
       if (this.animOn) {
-        const hero = $('hero-canvas');
-        if (hero && $('scr-menu').classList.contains('active')) {
-          const ctx = hero.getContext('2d');
-          const eq = this.profile?.equipped || {};
-          const p = this.getEquippedProfile();
-          drawPortrait(ctx, hero.width, hero.height, { charId: eq.char || 'fahd', skinId: eq.skin || 'out_basic', weaponId: p.weapon, t: this.portraitT, weaponTint: p.ws });
-        }
-        const lk = $('locker-canvas');
-        if (lk && $('scr-menu').classList.contains('active')) {
-          const ctx = lk.getContext('2d');
-          const eq = this.profile?.equipped || {};
-          const p = this.getEquippedProfile();
-          drawPortrait(ctx, lk.width, lk.height, { charId: eq.char || 'fahd', skinId: eq.skin || 'out_basic', weaponId: p.weapon, t: this.portraitT, weaponTint: p.ws });
-        }
-        const mini = $('mini-avatar');
-        if (mini) {
-          const ctx = mini.getContext('2d');
-          const eq = this.profile?.equipped || {};
-          drawPortrait(ctx, mini.width, mini.height, { charId: eq.char || 'fahd', skinId: eq.skin || 'out_basic', t: this.portraitT });
+        try {
+          const hero = $('hero-canvas');
+          if (hero && $('scr-menu')?.classList.contains('active')) {
+            const ctx = hero.getContext('2d');
+            if (ctx) {
+              const eq = this.profile?.equipped || {};
+              const p = this.getEquippedProfile();
+              drawPortrait(ctx, hero.width, hero.height, { charId: eq.char || 'fahd', skinId: eq.skin || 'out_basic', weaponId: p.weapon, t: this.portraitT, weaponTint: p.ws });
+            }
+          }
+          const lk = $('locker-canvas');
+          if (lk && $('scr-menu')?.classList.contains('active')) {
+            const ctx = lk.getContext('2d');
+            if (ctx) {
+              const eq = this.profile?.equipped || {};
+              const p = this.getEquippedProfile();
+              drawPortrait(ctx, lk.width, lk.height, { charId: eq.char || 'fahd', skinId: eq.skin || 'out_basic', weaponId: p.weapon, t: this.portraitT, weaponTint: p.ws });
+            }
+          }
+          const mini = $('mini-avatar');
+          if (mini && $('scr-menu')?.classList.contains('active')) {
+            const ctx = mini.getContext('2d');
+            if (ctx) {
+              const eq = this.profile?.equipped || {};
+              drawPortrait(ctx, mini.width, mini.height, { charId: eq.char || 'fahd', skinId: eq.skin || 'out_basic', t: this.portraitT });
+            }
+          }
+        } catch {
+          // ignore portrait render errors during animation
         }
       }
       requestAnimationFrame(step);
@@ -254,27 +265,33 @@ export class UI {
   updateProfile() {
     const p = this.profile;
     if (!p) return;
-    $('mini-name').textContent = p.name;
-    $('mini-lvl').textContent = p.level;
-    $('cur-gold').textContent = fmt(p.gold);
-    $('cur-gems').textContent = fmt(p.gems);
-    $('cur-bp').textContent = 'مستوى ' + p.bpTier;
-    $('mini-xp').style.width = Math.min(100, (p.xp / p.xpNeed) * 100) + '%';
-    $('mini-xptxt').textContent = `${fmt(p.xp)} / ${fmt(p.xpNeed)}`;
-    $('hero-season').textContent = `${BATTLEPASS.seasonAr} · المستوى ${p.bpTier}`;
-    $('st-games').textContent = fmt(p.stats.games);
-    $('st-wins').textContent = fmt(p.stats.wins);
-    $('st-kills').textContent = fmt(p.stats.kills);
-    $('st-dmg').textContent = fmt(p.stats.damage);
-    $('st-hs').textContent = fmt(p.stats.headshots);
-    $('st-best').textContent = fmt(p.stats.bestKills);
-    this.renderLocker(); this.renderBP(); this.renderMissions();
-    const dailyBtn = $('btn-daily');
-    if (dailyBtn) {
-      const d = p.daily || { available: true, streak: 0 };
-      dailyBtn.textContent = d.available ? `🎁 مكافأة اليوم (يوم ${(d.streak || 0) + 1})` : `✅ مكافأة اليوم مستلمة (سلسلة ${d.streak || 1} أيام)`;
-      dailyBtn.disabled = !d.available;
-      dailyBtn.style.opacity = d.available ? '1' : '.6';
+    try {
+      if ($('mini-name')) $('mini-name').textContent = p.name || 'لاعب';
+      if ($('mini-lvl')) $('mini-lvl').textContent = p.level || 1;
+      if ($('cur-gold')) $('cur-gold').textContent = fmt(p.gold);
+      if ($('cur-gems')) $('cur-gems').textContent = fmt(p.gems);
+      if ($('cur-bp')) $('cur-bp').textContent = 'مستوى ' + (p.bpTier || 1);
+      if ($('mini-xp')) $('mini-xp').style.width = Math.min(100, ((p.xp || 0) / (p.xpNeed || 250)) * 100) + '%';
+      if ($('mini-xptxt')) $('mini-xptxt').textContent = `${fmt(p.xp || 0)} / ${fmt(p.xpNeed || 250)}`;
+      if ($('hero-season')) $('hero-season').textContent = `${BATTLEPASS.seasonAr} · المستوى ${p.bpTier || 1}`;
+      if (p.stats) {
+        if ($('st-games')) $('st-games').textContent = fmt(p.stats.games);
+        if ($('st-wins')) $('st-wins').textContent = fmt(p.stats.wins);
+        if ($('st-kills')) $('st-kills').textContent = fmt(p.stats.kills);
+        if ($('st-dmg')) $('st-dmg').textContent = fmt(p.stats.damage);
+        if ($('st-hs')) $('st-hs').textContent = fmt(p.stats.headshots);
+        if ($('st-best')) $('st-best').textContent = fmt(p.stats.bestKills);
+      }
+      this.renderLocker(); this.renderBP(); this.renderMissions();
+      const dailyBtn = $('btn-daily');
+      if (dailyBtn) {
+        const d = p.daily || { available: true, streak: 0 };
+        dailyBtn.textContent = d.available ? `🎁 مكافأة اليوم (يوم ${(d.streak || 0) + 1})` : `✅ مكافأة اليوم مستلمة (سلسلة ${d.streak || 1} أيام)`;
+        dailyBtn.disabled = !d.available;
+        dailyBtn.style.opacity = d.available ? '1' : '.6';
+      }
+    } catch (e) {
+      console.error('[updateProfile] error:', e);
     }
   }
   hideAll() {
@@ -411,54 +428,60 @@ export class UI {
   }
   renderThumbs() {
     for (const cv of document.querySelectorAll('canvas[data-thumb]')) {
-      const [kind, id] = cv.dataset.thumb.split(':');
-      const ctx = cv.getContext('2d');
-      ctx.clearRect(0, 0, cv.width, cv.height);
-      if (kind === 'char' || kind === 'skin') {
-        drawPortrait(ctx, cv.width, cv.height, { charId: kind === 'char' ? id : (this.profile.equipped.char || 'fahd'), skinId: kind === 'skin' ? id : 'out_basic', t: 0.4, weaponId: this.getEquippedProfile().weapon });
-      } else if (kind === 'wskin') {
-        const it = WEAPON_SKINS.find(x => x.id === id); if (!it) continue;
-        const w = WEAPONS[it.w];
-        ctx.fillStyle = 'rgba(255,255,255,.04)'; ctx.fillRect(0, 0, cv.width, cv.height);
-        ctx.save(); ctx.translate(16, cv.height / 2); ctx.rotate(-0.12);
-        const L = w.type === 'sniper' ? 150 : w.type === 'pistol' ? 74 : 120;
-        ctx.fillStyle = it.tint; ctx.fillRect(0, -9, L, 18);
-        ctx.fillStyle = it.accent; ctx.fillRect(10, -16, L * 0.45, 9);
-        ctx.fillStyle = '#1a1d21'; ctx.fillRect(14, 6, 22, 30);
-        if (w.type === 'sniper' || w.type === 'dmr') { ctx.fillStyle = '#101418'; ctx.fillRect(30, -30, 44, 14); }
-        ctx.restore();
-        ctx.fillStyle = '#fff'; ctx.font = '700 12px Cairo'; ctx.fillText(w.ar, 8, cv.height - 8);
-      } else if (kind === 'vskin') {
-        const it = VEHICLE_SKINS.find(x => x.id === id); if (!it) continue;
-        ctx.save(); ctx.translate(cv.width / 2, cv.height / 2);
-        ctx.fillStyle = 'rgba(0,0,0,.35)'; rr(ctx, -52, -34, 110, 74, 16); ctx.fill();
-        ctx.fillStyle = it.tint; rr(ctx, -56, -38, 112, 76, 16); ctx.fill();
-        ctx.fillStyle = it.accent; rr(ctx, -34, -26, 52, 52, 10); ctx.fill();
-        ctx.fillStyle = '#20262e'; rr(ctx, 10, -28, 34, 56, 8); ctx.fill();
-        ctx.restore();
-        ctx.fillStyle = '#fff'; ctx.font = '700 12px Cairo'; ctx.fillText(VEHICLES[it.v]?.ar || '', 8, cv.height - 8);
-      } else if (kind === 'parachute') {
-        const it = PARACHUTES.find(x => x.id === id); if (!it) continue;
-        ctx.save(); ctx.translate(cv.width / 2, cv.height * 0.42);
-        ctx.fillStyle = it.colors[0]; ctx.beginPath(); ctx.ellipse(0, 0, 66, 44, 0, Math.PI, 6.283); ctx.fill();
-        ctx.fillStyle = it.colors[1]; ctx.beginPath(); ctx.ellipse(0, 0, 66, 44, 0, Math.PI, Math.PI * 1.5); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
-        for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 22, 8); ctx.lineTo(i * 6, 60); ctx.stroke(); }
-        ctx.fillStyle = '#c93030'; rr(ctx, -16, 60, 32, 26, 4); ctx.fill();
-        ctx.restore();
-      } else if (kind === 'emote') {
-        const it = EMOTES.find(x => x.id === id); if (!it) continue;
-        ctx.font = '64px serif'; ctx.textAlign = 'center'; ctx.fillText(it.icon, cv.width / 2, cv.height * 0.68);
-      } else if (kind === 'crate' || kind === 'pack') {
-        const list = kind === 'pack' ? BUNDLES : CRATES;
-        const it = list.find(x => x.id === id); if (!it) continue;
-        const col = RARITY[it.rarity].color;
-        ctx.save(); ctx.translate(cv.width / 2, cv.height / 2 + 8);
-        ctx.fillStyle = 'rgba(0,0,0,.35)'; rr(ctx, -44, -34, 92, 74, 8); ctx.fill();
-        ctx.fillStyle = '#7a5a2e'; rr(ctx, -46, -38, 92, 74, 8); ctx.fill();
-        ctx.fillStyle = col; ctx.fillRect(-46, -12, 92, 16); ctx.fillRect(-6, -38, 12, 74);
-        ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(0, 14, 8, 0, 6.283); ctx.fill();
-        ctx.restore();
+      try {
+        const [kind, id] = (cv.dataset.thumb || '').split(':');
+        const ctx = cv.getContext('2d');
+        if (!ctx) continue;
+        ctx.clearRect(0, 0, cv.width, cv.height);
+        const eq = this.profile?.equipped || {};
+        if (kind === 'char' || kind === 'skin') {
+          drawPortrait(ctx, cv.width, cv.height, { charId: kind === 'char' ? id : (eq.char || 'fahd'), skinId: kind === 'skin' ? id : 'out_basic', t: 0.4, weaponId: this.getEquippedProfile().weapon });
+        } else if (kind === 'wskin') {
+          const it = WEAPON_SKINS.find(x => x.id === id); if (!it) continue;
+          const w = WEAPONS[it.w];
+          ctx.fillStyle = 'rgba(255,255,255,.04)'; ctx.fillRect(0, 0, cv.width, cv.height);
+          ctx.save(); ctx.translate(16, cv.height / 2); ctx.rotate(-0.12);
+          const L = w.type === 'sniper' ? 150 : w.type === 'pistol' ? 74 : 120;
+          ctx.fillStyle = it.tint; ctx.fillRect(0, -9, L, 18);
+          ctx.fillStyle = it.accent; ctx.fillRect(10, -16, L * 0.45, 9);
+          ctx.fillStyle = '#1a1d21'; ctx.fillRect(14, 6, 22, 30);
+          if (w.type === 'sniper' || w.type === 'dmr') { ctx.fillStyle = '#101418'; ctx.fillRect(30, -30, 44, 14); }
+          ctx.restore();
+          ctx.fillStyle = '#fff'; ctx.font = '700 12px Cairo'; ctx.fillText(w.ar, 8, cv.height - 8);
+        } else if (kind === 'vskin') {
+          const it = VEHICLE_SKINS.find(x => x.id === id); if (!it) continue;
+          ctx.save(); ctx.translate(cv.width / 2, cv.height / 2);
+          ctx.fillStyle = 'rgba(0,0,0,.35)'; rr(ctx, -52, -34, 110, 74, 16); ctx.fill();
+          ctx.fillStyle = it.tint; rr(ctx, -56, -38, 112, 76, 16); ctx.fill();
+          ctx.fillStyle = it.accent; rr(ctx, -34, -26, 52, 52, 10); ctx.fill();
+          ctx.fillStyle = '#20262e'; rr(ctx, 10, -28, 34, 56, 8); ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = '#fff'; ctx.font = '700 12px Cairo'; ctx.fillText(VEHICLES[it.v]?.ar || '', 8, cv.height - 8);
+        } else if (kind === 'parachute') {
+          const it = PARACHUTES.find(x => x.id === id); if (!it) continue;
+          ctx.save(); ctx.translate(cv.width / 2, cv.height * 0.42);
+          ctx.fillStyle = it.colors[0]; ctx.beginPath(); ctx.ellipse(0, 0, 66, 44, 0, Math.PI, 6.283); ctx.fill();
+          ctx.fillStyle = it.colors[1]; ctx.beginPath(); ctx.ellipse(0, 0, 66, 44, 0, Math.PI, Math.PI * 1.5); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 2;
+          for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * 22, 8); ctx.lineTo(i * 6, 60); ctx.stroke(); }
+          ctx.fillStyle = '#c93030'; rr(ctx, -16, 60, 32, 26, 4); ctx.fill();
+          ctx.restore();
+        } else if (kind === 'emote') {
+          const it = EMOTES.find(x => x.id === id); if (!it) continue;
+          ctx.font = '64px serif'; ctx.textAlign = 'center'; ctx.fillText(it.icon, cv.width / 2, cv.height * 0.68);
+        } else if (kind === 'crate' || kind === 'pack') {
+          const list = kind === 'pack' ? BUNDLES : CRATES;
+          const it = list.find(x => x.id === id); if (!it) continue;
+          const col = RARITY[it.rarity].color;
+          ctx.save(); ctx.translate(cv.width / 2, cv.height / 2 + 8);
+          ctx.fillStyle = 'rgba(0,0,0,.35)'; rr(ctx, -44, -34, 92, 74, 8); ctx.fill();
+          ctx.fillStyle = '#7a5a2e'; rr(ctx, -46, -38, 92, 74, 8); ctx.fill();
+          ctx.fillStyle = col; ctx.fillRect(-46, -12, 92, 16); ctx.fillRect(-6, -38, 12, 74);
+          ctx.fillStyle = '#ffd166'; ctx.beginPath(); ctx.arc(0, 14, 8, 0, 6.283); ctx.fill();
+          ctx.restore();
+        }
+      } catch {
+        // ignore thumb render errors
       }
     }
   }
