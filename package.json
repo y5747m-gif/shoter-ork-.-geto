@@ -1,0 +1,35 @@
+{
+  "name": "ork-zone",
+  "version": "1.0.0",
+  "description": "ORK ZONE - لعبة باتل رويال عربية (أونلاين + أوفلاين) بأسلوب بابجي و فري فاير",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
+    "test": "node tests/smoke.test.js",
+    "test:online": "node tests/online.test.js",
+    "test:client": "node tests/client.test.js",
+    "test:all": "node tests/smoke.test.js && node tests/client.test.js && node tests/online.test.js",
+    "previews": "node tools/preview.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "keywords": [
+    "battle-royale",
+    "game",
+    "multiplayer",
+    "pubg",
+    "free-fire"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^24.1.0",
+    "@napi-rs/canvas": "^0.1.60"
+  }
+}

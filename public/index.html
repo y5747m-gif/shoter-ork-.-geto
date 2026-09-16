@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>أورك زون | ORK ZONE — باتل رويال</title>
+<meta name="theme-color" content="#0a0e14" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div id="bg-fx"><canvas id="bg-canvas"></canvas><div class="bg-grid"></div><div class="bg-vignette"></div></div>
+
+<!-- ================= شاشة التحميل ================= -->
+<div class="screen active" id="scr-loading">
+  <div class="load-wrap">
+    <div class="logo-big">
+      <div class="logo-ork">أورك<span class="zap">⚡</span>زون</div>
+      <div class="logo-en">O R K &nbsp; Z O N E</div>
+      <div class="logo-tag">كل خرائط القتال في مكان واحد · ٥٠ لاعباً · أونلاين وأوفلاين</div>
+    </div>
+    <div class="load-bar"><i id="load-fill"></i></div>
+    <div class="load-status" id="load-status">جاري تجهيز الساحة...</div>
+    <div class="load-tips" id="load-tip">نصيحة: اهبط على المناطق الحمراء للحصول على أقوى الأسلحة!</div>
+  </div>
+</div>
+
+<!-- ================= شاشة الدخول ================= -->
+<div class="screen" id="scr-auth">
+  <div class="auth-card glass">
+    <h2 class="title-gold">ادخل الساحة</h2>
+    <div class="tabs">
+      <button class="tab active" data-authtab="guest">لاعب سريع</button>
+      <button class="tab" data-authtab="register">حساب جديد</button>
+      <button class="tab" data-authtab="login">تسجيل الدخول</button>
+    </div>
+    <div class="auth-pane" data-pane="guest">
+      <label>اسمك في المعركة</label>
+      <input id="guest-name" maxlength="14" placeholder="اكتب اسمك..." />
+      <button class="btn-gold big" id="btn-guest">ابدأ اللعب فوراً</button>
+      <p class="hint">حساب سريع يُحفظ على هذا الجهاز — يمكنك الترقية لحساب دائم لاحقاً.</p>
+    </div>
+    <div class="auth-pane hidden" data-pane="register">
+      <label>اسم الحساب</label><input id="reg-name" maxlength="14" placeholder="اسم فريد" />
+      <label>كلمة المرور</label><input id="reg-pass" type="password" placeholder="••••••" />
+      <button class="btn-gold big" id="btn-register">إنشاء الحساب</button>
+    </div>
+    <div class="auth-pane hidden" data-pane="login">
+      <label>اسم الحساب</label><input id="login-name" maxlength="14" placeholder="اسمك" />
+      <label>كلمة المرور</label><input id="login-pass" type="password" placeholder="••••••" />
+      <button class="btn-gold big" id="btn-login">دخول</button>
+    </div>
+    <div class="auth-err" id="auth-err"></div>
+  </div>
+</div>
+
+<!-- ================= القائمة الرئيسية ================= -->
+<div class="screen" id="scr-menu">
+  <header class="top-bar">
+    <div class="player-card glass" id="pc-mini">
+      <div class="pc-avatar"><canvas id="mini-avatar" width="96" height="96"></canvas><span class="lvl" id="mini-lvl">1</span></div>
+      <div class="pc-info">
+        <div class="pc-name" id="mini-name">لاعب</div>
+        <div class="xp-bar"><i id="mini-xp" style="width:0%"></i><span id="mini-xptxt">0 / 0</span></div>
+      </div>
+    </div>
+    <div class="currencies">
+      <div class="cur gold" title="الذهب">🪙 <b id="cur-gold">0</b><button class="plus" data-buycur="gold">+</button></div>
+      <div class="cur gems" title="الجواهر">💎 <b id="cur-gems">0</b><button class="plus" data-buycur="gems">+</button></div>
+      <div class="cur bp" title="باس المعركة">🎖️ <b id="cur-bp">مستوى 1</b></div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="btn-settings" title="الإعدادات">⚙️</button>
+      <button class="icon-btn" id="btn-logout" title="خروج">⏏️</button>
+    </div>
+  </header>
+
+  <div class="menu-body">
+    <aside class="side-menu glass">
+      <button class="side-btn active" data-nav="home"><span>🏠</span> الرئيسية</button>
+      <button class="side-btn" data-nav="locker"><span>🧍</span> الشخصيات والأزياء</button>
+      <button class="side-btn" data-nav="store"><span>🛒</span> المتجر</button>
+      <button class="side-btn" data-nav="bp"><span>🎖️</span> باس المعركة</button>
+      <button class="side-btn" data-nav="missions"><span>📜</span> المهام</button>
+      <button class="side-btn" data-nav="rank"><span>🏆</span> لوحة الأبطال</button>
+      <button class="side-btn" data-nav="friends"><span>👥</span> الأصدقاء</button>
+    </aside>
+
+    <main class="menu-main">
+      <!-- الرئيسية -->
+      <section class="pane active" data-pane-id="home">
+        <div class="hero glass">
+          <div class="hero-txt">
+            <div class="season" id="hero-season">الموسم الأول: صعود الملوك</div>
+            <h1>أورك زون</h1>
+            <p>اسقط، تسلّح، وكن آخر من يقف. ٥ خرائط بأشكال مختلفة، ١٠+ أسلحة، ١٢ مقاتلاً بمهارات خاصة، اسكنات أسطورية وعملات ومتجر ضخم.</p>
+            <div class="hero-btns">
+              <button class="btn-gold big" id="btn-daily">🎁 مكافأة الدخول اليومية</button>
+              <button class="btn-gold big" id="btn-online">🌐 لعب أونلاين</button>
+              <button class="btn-ghost big" id="btn-offline">📴 لعب أوفلاين</button>
+              <button class="btn-ghost big" id="btn-private">🔒 غرفة بالأصدقاء</button>
+            </div>
+          </div>
+          <div class="hero-3d"><canvas id="hero-canvas" width="420" height="460"></canvas></div>
+        </div>
+        <div class="cards-row">
+          <div class="stat-card glass"><b id="st-games">0</b><span>مباريات</span></div>
+          <div class="stat-card glass"><b id="st-wins">0</b><span>انتصارات</span></div>
+          <div class="stat-card glass"><b id="st-kills">0</b><span>إقصاءات</span></div>
+          <div class="stat-card glass"><b id="st-dmg">0</b><span>إجمالي الضرر</span></div>
+          <div class="stat-card glass"><b id="st-hs">0</b><span>إصابات رأس</span></div>
+          <div class="stat-card glass"><b id="st-best">0</b><span>أفضل مباراة</span></div>
+        </div>
+      </section>
+
+      <!-- الخزنة -->
+      <section class="pane" data-pane-id="locker">
+        <h2 class="title-gold">خزنة المقاتلين</h2>
+        <div class="locker-grid">
+          <div class="locker-preview glass">
+            <canvas id="locker-canvas" width="320" height="420"></canvas>
+            <div class="locker-info" id="locker-info">—</div>
+            <div class="row">
+              <input id="nickname" maxlength="14" placeholder="اسم اللاعب" class="nick" />
+              <button class="btn-gold" id="btn-setname">تغيير الاسم</button>
+            </div>
+          </div>
+          <div class="locker-list glass">
+            <div class="tabs">
+              <button class="tab active" data-lockertab="chars">🧍 الشخصيات</button>
+              <button class="tab" data-lockertab="skins">✨ الأزياء</button>
+              <button class="tab" data-lockertab="wskins">🔫 أزياء الأسلحة</button>
+              <button class="tab" data-lockertab="parachutes">🪂 المظلات</button>
+              <button class="tab" data-lockertab="emotes">😄 الرقصات</button>
+            </div>
+            <div class="shop-grid" id="locker-grid"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- المتجر -->
+      <section class="pane" data-pane-id="store">
+        <h2 class="title-gold">المتجر</h2>
+        <div class="shop-tabs" id="store-tabs"></div>
+        <div class="shop-grid big" id="store-grid"></div>
+      </section>
+
+      <!-- باس المعركة -->
+      <section class="pane" data-pane-id="bp">
+        <h2 class="title-gold">🎖️ <span id="bp-title">باس المعركة</span></h2>
+        <div class="bp-head glass">
+          <div>
+            <div class="bp-tier">مستواك: <b id="bp-tier-num">1</b> / 50</div>
+            <div class="bp-bar"><i id="bp-fill"></i><span id="bp-xptxt"></span></div>
+          </div>
+          <button class="btn-gold" id="btn-bp-buy">شراء الباس المميز (٣٢٠ 💎)</button>
+        </div>
+        <div class="bp-track glass"><h3>المسار المجاني</h3><div class="bp-strip" id="bp-free"></div></div>
+        <div class="bp-track glass premium"><h3>المسار المميز</h3><div class="bp-strip" id="bp-prem"></div></div>
+      </section>
+
+      <!-- المهام -->
+      <section class="pane" data-pane-id="missions">
+        <h2 class="title-gold">المهام والإنجازات</h2>
+        <div class="tabs">
+          <button class="tab active" data-mtab="daily">يومية</button>
+          <button class="tab" data-mtab="weekly">أسبوعية</button>
+          <button class="tab" data-mtab="achv">إنجازات</button>
+        </div>
+        <div class="mission-list" id="mission-list"></div>
+      </section>
+
+      <!-- الترتيب -->
+      <section class="pane" data-pane-id="rank">
+        <h2 class="title-gold">لوحة الأبطال</h2>
+        <div class="tabs">
+          <button class="tab active" data-rtab="kills">الإقصاءات</button>
+          <button class="tab" data-rtab="wins">الانتصارات</button>
+          <button class="tab" data-rtab="damage">الضرر</button>
+        </div>
+        <div class="rank-list" id="rank-list"></div>
+      </section>
+
+      <!-- الأصدقاء -->
+      <section class="pane" data-pane-id="friends">
+        <h2 class="title-gold">الأصدقاء</h2>
+        <div class="row">
+          <input id="friend-name" placeholder="اسم اللاعب" />
+          <button class="btn-gold" id="btn-add-friend">إضافة صديق</button>
+        </div>
+        <div class="friend-list" id="friend-list"></div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- ================= اختيار النمط والخريطة ================= -->
+<div class="screen" id="scr-modes">
+  <div class="modal glass wide">
+    <h2 class="title-gold" id="modes-title">اختر نمط المعركة</h2>
+    <div class="mode-grid" id="mode-grid"></div>
+    <h3 class="sub">🗺️ اختر الأرض (خمس خرائط بأشكال مختلفة)</h3>
+    <div class="map-grid" id="map-grid"></div>
+    <div class="row end">
+      <button class="btn-ghost" id="btn-modes-back">رجوع</button>
+      <button class="btn-gold big" id="btn-modes-go">ابدأ المعركة ⚔️</button>
+    </div>
+    <div class="offline-opts hidden" id="offline-opts">
+      <h3 class="sub">إعدادات الأوفلاين</h3>
+      <div class="row wrap">
+        <label>عدد الخصوم: <input type="range" id="off-bots" min="9" max="49" value="39" /><b id="off-bots-v">39</b></label>
+        <label>صعوبة البوتات:
+          <select id="off-diff">
+            <option value="rookie">مبتدئ</option>
+            <option value="normal" selected>عادي</option>
+            <option value="veteran">محترف</option>
+            <option value="pro">أسطوري</option>
+            <option value="mixed">مختلط</option>
+          </select></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= غرفة الأصدقاء ================= -->
+<div class="screen" id="scr-room">
+  <div class="modal glass wide">
+    <h2 class="title-gold">غرفة خاصة</h2>
+    <div class="row">
+      <div class="code-box">رمز الغرفة: <b id="room-code">----</b></div>
+      <input id="join-code" placeholder="أدخل رمز غرفة" maxlength="6" />
+      <button class="btn-gold" id="btn-join-code">انضمام</button>
+    </div>
+    <div class="room-players" id="room-players"></div>
+    <div class="row end">
+      <div class="countdown" id="room-count">٨</div>
+      <button class="btn-ghost" id="btn-room-leave">خروج</button>
+      <button class="btn-gold big" id="btn-room-ready">جاهز! ✅</button>
+    </div>
+    <div class="chat-box glass">
+      <div class="chat-log" id="room-chat"></div>
+      <div class="row"><input id="room-chat-input" placeholder="اكتب رسالة..." /><button class="btn-ghost" id="btn-room-chat">إرسال</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= الـ HUD ================= -->
+<div id="hud" class="hidden">
+  <canvas id="game-canvas"></canvas>
+
+  <div class="hud-top">
+    <div class="mini-wrap glass"><canvas id="minimap" width="220" height="220"></canvas>
+      <div class="zone-timer" id="zone-timer">استعداد</div>
+    </div>
+    <div class="hud-center">
+      <div class="compass" id="compass"></div>
+      <div class="match-info glass">
+        <span class="alive">👤 <b id="hud-alive">50</b></span>
+        <span class="tkills">☠️ <b id="hud-kills">0</b></span>
+        <span class="mtimer" id="hud-timer">00:00</span>
+        <span class="mode" id="hud-mode">فردي</span>
+        <span class="ping" id="hud-ping">--</span>
+      </div>
+      <div class="tdm-score hidden" id="tdm-score">🔵 0 : 0 🔴</div>
+    </div>
+    <div class="killfeed" id="killfeed"></div>
+  </div>
+
+  <div class="hitmarker" id="hitmarker"></div>
+  <div class="dmg-popups" id="dmg-popups"></div>
+  <div class="crosshair" id="crosshair"><i></i><i></i><i></i><i></i><span></span></div>
+  <div class="center-msg" id="center-msg"></div>
+  <div class="big-msg" id="big-msg"></div>
+
+  <div class="hud-left">
+    <div class="bars">
+      <div class="bar hp"><i id="bar-hp"></i><span id="hp-txt">100</span></div>
+      <div class="bar sh"><i id="bar-sh"></i><span id="sh-txt">0</span></div>
+      <div class="bar bo"><i id="bar-bo"></i><span id="bo-txt">0</span></div>
+    </div>
+    <div class="gear" id="hud-gear"></div>
+  </div>
+
+  <div class="hud-right">
+    <div class="weapons" id="hud-weapons"></div>
+    <div class="ammo-box"><b id="hud-ammo">0</b><span>/</span><i id="hud-reserve">0</i><em id="hud-wname">—</em></div>
+    <div class="items" id="hud-items"></div>
+  </div>
+
+  <div class="hud-bottom">
+    <div class="hints glass" id="hud-hints">WASD حركة · زر الماوس الأيسر رمي · Shift جري · C انحناء · Z استلقاء · Tab النتائج</div>
+  </div>
+
+  <!-- التحكم بالماوس: الهبوط -->
+  <div class="jump-phase hidden" id="jump-phase">
+    <div class="jump-box glass">
+      <h3 class="title-gold">مرحلة الهبوط بالمظلة</h3>
+      <canvas id="dropmap" width="420" height="420"></canvas>
+      <p>اختر نقطة الهبوط بالنقر على الخريطة، أو اقفز الآن مع النزول التدريجي.</p>
+      <button class="btn-gold big" id="btn-jump">اقفز الآن 🪂</button>
+    </div>
+  </div>
+
+  <div class="scoreboard hidden" id="scoreboard"><div class="sb-inner glass"><h3>النتائج</h3><div id="sb-body"></div></div></div>
+
+  <div class="chat-live glass hidden" id="chat-live"></div>
+
+  <!-- أزرار اللمس -->
+  <div class="touch hidden" id="touch-ui">
+    <div class="stick" id="stick"><i id="stick-knob"></i></div>
+    <div class="tbtns">
+      <button class="tbtn fire" data-tbtn="fire">🔥</button>
+      <button class="tbtn" data-tbtn="aim">🎯</button>
+      <button class="tbtn" data-tbtn="jump">🦵</button>
+      <button class="tbtn" data-tbtn="crouch">⬇️</button>
+      <button class="tbtn" data-tbtn="reload">🔄</button>
+      <button class="tbtn" data-tbtn="heal">💊</button>
+      <button class="tbtn" data-tbtn="skill">✨</button>
+      <button class="tbtn" data-tbtn="pickup">🎒</button>
+      <button class="tbtn" data-tbtn="swap">🔀</button>
+      <button class="tbtn" data-tbtn="car">🚙</button>
+    </div>
+  </div>
+
+  <div class="pause hidden" id="pause">
+    <div class="modal glass">
+      <h2 class="title-gold">إيقاف مؤقت</h2>
+      <button class="btn-gold big" id="btn-resume">متابعة</button>
+      <button class="btn-ghost" id="btn-quit">الخروج من المباراة</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= النتائج ================= -->
+<div class="screen" id="scr-results">
+  <div class="modal glass wide results">
+    <div class="win-title" id="res-title">نتيجة المباراة</div>
+    <div class="res-place" id="res-place">#1</div>
+    <div class="res-grid">
+      <div class="res-item"><b id="res-kills">0</b><span>إقصاءات</span></div>
+      <div class="res-item"><b id="res-dmg">0</b><span>ضرر</span></div>
+      <div class="res-item"><b id="res-hs">0</b><span>إصابات رأس</span></div>
+      <div class="res-item"><b id="res-time">0:00</b><span>مدة الصمود</span></div>
+    </div>
+    <div class="reward-row" id="res-rewards"></div>
+    <div class="xp-gain" id="res-xp"></div>
+    <div class="row end">
+      <button class="btn-ghost" id="btn-res-menu">القائمة الرئيسية</button>
+      <button class="btn-gold big" id="btn-res-again">مباراة أخرى ⚔️</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= الإعدادات ================= -->
+<div class="screen" id="scr-settings">
+  <div class="modal glass wide">
+    <h2 class="title-gold">الإعدادات</h2>
+    <div class="settings-grid">
+      <label>صوت المؤثرات <input type="range" id="set-sfx" min="0" max="100" /></label>
+      <label>الموسيقى <input type="range" id="set-music" min="0" max="100" /></label>
+      <label>الحساسية <input type="range" id="set-sens" min="20" max="300" /></label>
+      <label>الجودة
+        <select id="set-quality"><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high" selected>عالية</option><option value="ultra">فائقة</option></select>
+      </label>
+      <label class="check"><input type="checkbox" id="set-autofire" /> إطلاق تلقائي عند التصويب</label>
+      <label class="check"><input type="checkbox" id="set-blood" checked /> تأثيرات الدم</label>
+      <label class="check"><input type="checkbox" id="set-touch" /> أزرار اللمس (للهاتف)</label>
+    </div>
+    <div class="row end"><button class="btn-gold" id="btn-settings-save">حفظ</button><button class="btn-ghost" id="btn-settings-close">إغلاق</button></div>
+  </div>
+</div>
+
+<!-- صندوق منبثق عام -->
+<div id="toast-wrap"></div>
+<div class="modal-wrap hidden" id="modal-wrap"><div class="modal glass" id="modal-body"></div></div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
