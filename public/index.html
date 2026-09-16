@@ -391,6 +391,24 @@
 <div id="toast-wrap"></div>
 <div class="modal-wrap hidden" id="modal-wrap"><div class="modal glass" id="modal-body"></div></div>
 
+<script>
+  // مؤقت أمان: يضمن عدم بقاء شاشة التحميل عالقة بأي حال من الأحوال
+  window.__loadingWatchdog = setTimeout(function() {
+    var scr = document.getElementById('scr-loading');
+    if (scr && scr.classList.contains('active')) {
+      console.warn('[watchdog] إنهاء شاشة التحميل قسراً لعدم الاستجابة');
+      scr.classList.remove('active');
+      var auth = document.getElementById('scr-auth');
+      var menu = document.getElementById('scr-menu');
+      if (window.ORK && window.ORK.profile) {
+        if (menu) menu.classList.add('active');
+        try { window.ORK.ui.showMenu(); } catch(e){}
+      } else {
+        if (auth) auth.classList.add('active');
+      }
+    }
+  }, 3500);
+</script>
 <script type="module" src="/js/main.js"></script>
 </body>
 </html>

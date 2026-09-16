@@ -24,6 +24,16 @@ store.initStore();
 const app = express();
 app.use(express.json({ limit: '256kb' }));
 
+// إتاحة الوصول وتضمين المعاينة عبر iframe في بيئة Arena
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.removeHeader('X-Frame-Options');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+});
+
 /* ---------- كتالوج اللعبة (يستهلكه العميل) ---------- */
 app.get('/api/catalog', (req, res) => {
   res.json({

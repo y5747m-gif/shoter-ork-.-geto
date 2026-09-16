@@ -11,50 +11,69 @@ export class Audio2 {
   }
   init() {
     if (this.ctx) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) { this.enabled = false; return; }
-    this.ctx = new AC();
-    this.master = this.ctx.createGain(); this.master.gain.value = 0.85; this.master.connect(this.ctx.destination);
-    this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = this.sfxVol; this.sfxGain.connect(this.master);
-    this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = this.musicVol * 0.5; this.musicGain.connect(this.master);
-    this.noiseBuf = this.makeNoise(1.4);
+    try {
+      const AC = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext);
+      if (!AC) { this.enabled = false; return; }
+      this.ctx = new AC();
+      this.master = this.ctx.createGain(); this.master.gain.value = 0.85; this.master.connect(this.ctx.destination);
+      this.sfxGain = this.ctx.createGain(); this.sfxGain.gain.value = this.sfxVol; this.sfxGain.connect(this.master);
+      this.musicGain = this.ctx.createGain(); this.musicGain.gain.value = this.musicVol * 0.5; this.musicGain.connect(this.master);
+      this.noiseBuf = this.makeNoise(1.4);
+    } catch {
+      this.enabled = false;
+      this.ctx = null;
+    }
   }
-  resume() { this.init(); if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
+  resume() {
+    try {
+      this.init();
+      if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    } catch {}
+  }
   makeNoise(sec) {
-    const len = Math.floor(this.ctx.sampleRate * sec);
-    const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
-    return buf;
+    try {
+      if (!this.ctx) return null;
+      const len = Math.floor(this.ctx.sampleRate * sec);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      return buf;
+    } catch {
+      return null;
+    }
   }
   setSfx(v) { this.sfxVol = v; if (this.sfxGain) this.sfxGain.gain.value = v; }
   setMusic(v) { this.musicVol = v; if (this.musicGain) this.musicGain.gain.value = v * 0.5; }
 
   /* ---------- أدوات ---------- */
   noise(dur, { vol = 0.4, lp = 2400, hp = 100, q = 1, attack = 0.001, dest = null } = {}) {
-    if (!this.enabled || !this.ctx) return;
-    const t = this.ctx.currentTime;
-    const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
-    const f1 = this.ctx.createBiquadFilter(); f1.type = 'lowpass'; f1.frequency.value = lp; f1.Q.value = q;
-    const f2 = this.ctx.createBiquadFilter(); f2.type = 'highpass'; f2.frequency.value = hp;
-    const g = this.ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(f1); f1.connect(f2); f2.connect(g); g.connect(dest || this.sfxGain);
-    src.start(t); src.stop(t + dur + 0.02);
+    if (!this.enabled || !this.ctx || !this.noiseBuf) return;
+    try {
+      const t = this.ctx.currentTime;
+      const src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf; src.loop = true;
+      const f1 = this.ctx.createBiquadFilter(); f1.type = 'lowpass'; f1.frequency.value = lp; f1.Q.value = q;
+      const f2 = this.ctx.createBiquadFilter(); f2.type = 'highpass'; f2.frequency.value = hp;
+      const g = this.ctx.createGain(); g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      src.connect(f1); f1.connect(f2); f2.connect(g); g.connect(dest || this.sfxGain);
+      src.start(t); src.stop(t + dur + 0.02);
+    } catch {}
   }
   tone(freq, dur, { type = 'sine', vol = 0.25, slide = 0, attack = 0.005, dest = null, detune = 0 } = {}) {
     if (!this.enabled || !this.ctx) return;
-    const t = this.ctx.currentTime;
-    const o = this.ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
-    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), t + dur);
-    if (detune) o.detune.value = detune;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(vol, t + attack);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(dest || this.sfxGain);
-    o.start(t); o.stop(t + dur + 0.02);
+    try {
+      const t = this.ctx.currentTime;
+      const o = this.ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+      if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), t + dur);
+      if (detune) o.detune.value = detune;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + attack);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(dest || this.sfxGain);
+      o.start(t); o.stop(t + dur + 0.02);
+    } catch {}
   }
   throttle(name, ms) {
     const now = performance.now();

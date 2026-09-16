@@ -28,26 +28,29 @@ export class Input2 {
   get isTouch() { return this.touchMode; }
 
   _bind() {
-    addEventListener('keydown', e => {
+    if (typeof window === 'undefined') return;
+    window.addEventListener('keydown', e => {
       if (e.repeat) { return; }
       this.keys.add(e.code);
       if (['Tab', 'Space', 'KeyF', 'KeyR', 'KeyG', 'KeyH', 'KeyQ', 'KeyE', 'Digit1', 'Digit2'].includes(e.code)) e.preventDefault();
       this.onKey(e.code);
     });
-    addEventListener('keyup', e => this.keys.delete(e.code));
-    addEventListener('blur', () => this.keys.clear());
-    this.cv.addEventListener('mousemove', e => {
-      this.mouse.x = e.clientX; this.mouse.y = e.clientY;
-      if (this.fps && this.locked) this.lookBy(e.movementX || 0, e.movementY || 0);
-    });
-    this.cv.addEventListener('mousedown', e => {
-      if (e.button === 0) this.mouse.down = true;
-      if (e.button === 2) this.mouse.right = true;
-      if (this.fps && !this.locked) this.requestLock();
-      this.onMouseDown(e.button);
-    });
-    addEventListener('mouseup', e => { if (e.button === 0) this.mouse.down = false; if (e.button === 2) this.mouse.right = false; });
-    this.cv.addEventListener('contextmenu', e => e.preventDefault());
+    window.addEventListener('keyup', e => this.keys.delete(e.code));
+    window.addEventListener('blur', () => this.keys.clear());
+    if (this.cv) {
+      this.cv.addEventListener('mousemove', e => {
+        this.mouse.x = e.clientX; this.mouse.y = e.clientY;
+        if (this.fps && this.locked) this.lookBy(e.movementX || 0, e.movementY || 0);
+      });
+      this.cv.addEventListener('mousedown', e => {
+        if (e.button === 0) this.mouse.down = true;
+        if (e.button === 2) this.mouse.right = true;
+        if (this.fps && !this.locked) this.requestLock();
+        this.onMouseDown(e.button);
+      });
+      this.cv.addEventListener('contextmenu', e => e.preventDefault());
+    }
+    window.addEventListener('mouseup', e => { if (e.button === 0) this.mouse.down = false; if (e.button === 2) this.mouse.right = false; });
     // قفل المؤشر
     if (typeof document !== 'undefined' && document.addEventListener) {
       document.addEventListener('pointerlockchange', () => {
