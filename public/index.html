@@ -2,15 +2,36 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual" />
 <title>أورك زون | ORK ZONE — باتل رويال</title>
 <meta name="theme-color" content="#0a0e14" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="أورك زون" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="application-name" content="ORK ZONE" />
+<meta name="screen-orientation" content="landscape" />
+<meta name="orientation" content="landscape" />
+<meta name="x5-orientation" content="landscape" />
+<meta name="x5-page-mode" content="app" />
+<meta name="format-detection" content="telephone=no" />
+<meta name="msapplication-tap-highlight" content="no" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
+<!-- طبقة إجبار الوضع الأفقي على الهواتف -->
+<div id="rotate-overlay" aria-hidden="true">
+  <div class="rotate-card">
+    <div class="rotate-phone">📱<span class="rotate-arrow">↻</span></div>
+    <h2>يرجى تدوير الجهاز</h2>
+    <p>اللعبة تعمل بالوضع الأفقي فقط<br><span>قم بتدوير هاتفك أفقياً للمتابعة</span></p>
+    <div class="rotate-bar"><i></i></div>
+    <button class="btn-gold" id="btn-rotate-try">حاول قفل الشاشة أفقياً</button>
+  </div>
+</div>
 <div id="bg-fx"><canvas id="bg-canvas"></canvas><div class="bg-grid"></div><div class="bg-vignette"></div></div>
 
 <!-- ================= شاشة التحميل ================= -->
@@ -408,6 +429,68 @@
       }
     }
   }, 3500);
+</script>
+<script>
+  // ========= إدارة الوضع الأفقي ودعم كل الأجهزة =========
+  (function(){
+    var overlay = null;
+    var isCoarse = false;
+    try { isCoarse = window.matchMedia('(pointer: coarse)').matches; } catch(e){}
+    function isMobileish(){ return isCoarse || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Math.min(innerWidth, innerHeight) <= 900; }
+    function isPortrait(){ return innerHeight > innerWidth; }
+    function needsLandscape(){ return isMobileish() && isPortrait() && Math.max(innerWidth, innerHeight) < 1100; }
+    function update(){
+      if(!overlay) overlay = document.getElementById('rotate-overlay');
+      if(!overlay) return;
+      var need = needsLandscape();
+      overlay.classList.toggle('visible', need);
+      document.documentElement.classList.toggle('force-landscape', need);
+      document.body.classList.toggle('portrait-blocked', need);
+      try { if(need) document.body.style.overflow='hidden'; else document.body.style.overflow=''; } catch(e){}
+    }
+    async function tryLock(){
+      try {
+        if(screen.orientation && screen.orientation.lock){
+          if(document.visibilityState === 'visible' && needsLandscape()){
+            await screen.orientation.lock('landscape').catch(function(){});
+          } else if(!needsLandscape() && screen.orientation.type && screen.orientation.type.startsWith('portrait')){
+            // لا نلغي القفل تلقائياً — نترك المستخدم
+          }
+        }
+      } catch(e){}
+      // محاولة ملء الشاشة على الهواتف الأفقية
+      try {
+        if(isMobileish() && !isPortrait() && document.documentElement.requestFullscreen && !document.fullscreenElement){
+          // لا نطلب تلقائياً بدون تفاعل — فقط بعد ضغطة
+        }
+      } catch(e){}
+    }
+    window.__orkTryLandscape = tryLock;
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', function(){ setTimeout(update, 200); setTimeout(tryLock, 400); });
+    document.addEventListener('DOMContentLoaded', update);
+    setInterval(update, 600);
+    // حاول القفل عند أول تفاعل
+    var once = function(){ tryLock(); update(); };
+    window.addEventListener('touchend', once, {once:true});
+    window.addEventListener('click', once);
+    document.addEventListener('click', function(e){
+      var btn = e.target.closest('#btn-rotate-try');
+      if(!btn) return;
+      e.preventDefault();
+      tryLock();
+      // حاول ملء الشاشة أيضاً
+      try {
+        if(document.documentElement.requestFullscreen && !document.fullscreenElement){
+          document.documentElement.requestFullscreen().catch(function(){});
+        }
+      } catch(e){}
+      setTimeout(update, 300);
+    });
+    // مراقبة تغير DPR عند تدوير بعض الأجهزة
+    try { window.visualViewport && window.visualViewport.addEventListener('resize', update); } catch(e){}
+    update();
+  })();
 </script>
 <script type="module" src="/js/main.js"></script>
 </body>

@@ -40,8 +40,53 @@ class App {
     this._loadIt = null;
   }
 
+  detectDevice() {
+    try {
+      const coarse = window.matchMedia('(pointer: coarse)').matches;
+      const touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      const small = Math.min(innerWidth, innerHeight) <= 900;
+      const isMobile = coarse || touch || small || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      // ضبط الجودة تلقائياً على الهواتف المتوسطة
+      if (isMobile && this.quality === 'high' && navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) {
+        // خفّض الجودة قليلاً على الأجهزة الضعيفة فقط إذا لم يخترها المستخدم
+        try { if (!localStorage.getItem('orkz_quality')) this.quality = 'medium'; } catch {}
+      }
+      // فعّل أزرار اللمس تلقائياً على الأجهزة اللمسية
+      if (isMobile && (coarse || touch)) {
+        this.settings.touch = true;
+        try { localStorage.setItem('orkz_settings', JSON.stringify(this.settings)); } catch {}
+      }
+      document.documentElement.classList.toggle('is-touch', !!isMobile);
+      document.documentElement.classList.toggle('is-desktop', !isMobile);
+      return isMobile;
+    } catch { return false; }
+  }
+
+  setupUniversalSupport() {
+    // اكتشاف الجهاز وتحديث عند التدوير
+    this.detectDevice();
+    const onResize = () => {
+      try { this.detectDevice(); } catch {}
+      try { this.session.renderer.resize(); } catch {}
+      try { if (window.__orkTryLandscape) window.__orkTryLandscape(); } catch {}
+      // تحسين الـ viewport على iOS عند ظهور شريط العنوان
+      try { document.documentElement.style.setProperty('--vh', (window.visualViewport ? window.visualViewport.height : innerHeight) * 0.01 + 'px'); } catch {}
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', () => setTimeout(onResize, 300));
+    try { window.visualViewport && window.visualViewport.addEventListener('resize', onResize); } catch {}
+    // محاولة قفل أفقي عند أول تفاعل أثناء اللعب
+    const tryFs = async () => {
+      try { if (window.__orkTryLandscape) await window.__orkTryLandscape(); } catch {}
+    };
+    window.addEventListener('click', tryFs, {capture:true});
+    window.addEventListener('touchend', tryFs, {capture:true, once:true});
+    onResize();
+  }
+
   async boot() {
     try {
+      this.setupUniversalSupport();
       this.loadingAnim();
       const t0 = performance.now();
       try { this.audio.init(); } catch {}
@@ -385,6 +430,17 @@ class App {
     }, 250);
   }
 
+  async requestLandscapeAndFullscreen(){
+    try { if(window.__orkTryLandscape) await window.__orkTryLandscape(); } catch{}
+    // حاول ملء الشاشة على الهواتف عند بدء اللعب (يتطلب تفاعل مستخدم — نحن داخل نقرة)
+    try {
+      const isTouch = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
+      if(isTouch && document.documentElement.requestFullscreen && !document.fullscreenElement && innerWidth > innerHeight){
+        // لا نطلب تلقائياً إذا رفض المتصفح — نتجاهل الخطأ
+        await document.documentElement.requestFullscreen().catch(()=>{});
+      }
+    } catch{}
+  }
   startSelected(again) {
     const mode = this._lastStart?.mode === 'offline' || !this.ui.onlineSelect ? 'offline' : 'online';
     const modeId = (again && this._lastStart?.modeId) || this.ui.selectedMode;
@@ -395,6 +451,7 @@ class App {
       $('scr-auth')?.classList.add('active');
       return;
     }
+    this.requestLandscapeAndFullscreen();
     if (mode === 'offline') {
       const bots = +($('off-bots')?.value ?? 39);
       const diff = $('off-diff')?.value || 'normal';
