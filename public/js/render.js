@@ -99,9 +99,23 @@ export class Renderer {
     window.addEventListener('resize', () => this.resize());
   }
   resize() {
-    const w = window.innerWidth, h = window.innerHeight;
-    this.cv.width = Math.floor(w * this.dpr); this.cv.height = Math.floor(h * this.dpr);
+    // استخدام visualViewport على الهواتف لدقة أدق مع شريط العنوان المتحرك
+    const vv = window.visualViewport;
+    const w = vv ? Math.floor(vv.width) : window.innerWidth;
+    const h = vv ? Math.floor(vv.height) : window.innerHeight;
+    // على الهواتف الأفقية الارتفاع صغير — نخفّض الـ DPR تلقائياً لتثبيت الأداء
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (h <= 500 && w > h) {
+      dpr = Math.min(dpr, 1.45);
+      if (this.quality === 'low') dpr = 1;
+      else if (this.quality === 'medium') dpr = Math.min(dpr, 1.25);
+    }
+    this.dpr = dpr;
+    this.cv.width = Math.floor(w * dpr); this.cv.height = Math.floor(h * dpr);
+    if (this.cv.style) { this.cv.style.width = w + 'px'; this.cv.style.height = h + 'px'; }
     this.w = w; this.h = h;
+    // تحديث محرك الثلاثي الأبعاد أيضاً
+    if (this.r3) { try { this.r3.resize && this.r3.resize(); } catch{} }
   }
   setQuality(q) {
     this.quality = q;

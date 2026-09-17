@@ -11,8 +11,11 @@
   --font:'Cairo',system-ui,'Segoe UI',Tahoma,sans-serif; --display:'Orbitron','Cairo',sans-serif;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);font-family:var(--font)}
-body{user-select:none;touch-action:none}
+html{height:100%; height:-webkit-fill-available; -webkit-text-size-adjust:100%; text-size-adjust:100%;}
+html,body{margin:0;padding:0;height:100%;min-height:100dvh;overflow:hidden;background:var(--bg);color:var(--txt);font-family:var(--font)}
+body{user-select:none;touch-action:none; overscroll-behavior:none; -webkit-font-smoothing:antialiased;}
+/* منع تحديد النص وسحب الصور على كل الأجهزة */
+img,canvas{ -webkit-user-drag:none; user-drag:none; }
 button,input,select{font-family:var(--font);color:var(--txt)}
 button{cursor:pointer;border:0;background:none}
 input,select{background:rgba(8,12,18,.9);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:15px;outline:none;min-width:0}
@@ -29,7 +32,15 @@ input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,
 .bg-vignette{position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,transparent 35%,rgba(0,0,0,.75) 100%);pointer-events:none}
 
 /* ---------- الشاشات ---------- */
-.screen{position:fixed;inset:0;z-index:5;display:none;flex-direction:column;align-items:center;justify-content:center;padding:14px;overflow:auto;animation:fade .35s ease}
+.screen{
+  position:fixed;inset:0;z-index:5;display:none;flex-direction:column;align-items:center;justify-content:center;
+  padding:14px;
+  padding-top:max(14px, env(safe-area-inset-top, 0px));
+  padding-bottom:max(14px, env(safe-area-inset-bottom, 0px));
+  padding-left:max(14px, env(safe-area-inset-left, 0px));
+  padding-right:max(14px, env(safe-area-inset-right, 0px));
+  overflow:auto;animation:fade .35s ease
+}
 .screen.active{display:flex}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .glass{background:var(--panel);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:var(--r);box-shadow:var(--sh-lg)}
@@ -214,9 +225,13 @@ input[type=range]{-webkit-appearance:none;height:6px;background:rgba(255,255,255
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:linear-gradient(180deg,var(--gold),var(--gold2));box-shadow:0 0 10px rgba(255,198,61,.6)}
 
 /* ---------- HUD ---------- */
-#hud{position:fixed;inset:0;z-index:20;overflow:hidden;background:#05080c}
-#game-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.hud-top{position:absolute;inset:0 0 auto 0;display:flex;justify-content:space-between;align-items:flex-start;padding:10px;pointer-events:none;gap:10px}
+#hud{position:fixed;inset:0;z-index:20;overflow:hidden;background:#05080c; padding-top:env(safe-area-inset-top,0); padding-bottom:env(safe-area-inset-bottom,0); }
+#game-canvas{position:absolute;inset:0;width:100%;height:100%;display:block; touch-action:none;}
+.hud-top{
+  position:absolute;inset:0 0 auto 0;display:flex;justify-content:space-between;align-items:flex-start;
+  padding:10px; padding-top:max(10px, env(safe-area-inset-top,0)); padding-left:max(10px, env(safe-area-inset-left,0)); padding-right:max(10px, env(safe-area-inset-right,0));
+  pointer-events:none;gap:10px
+}
 .mini-wrap{position:relative;padding:6px;border-radius:12px;pointer-events:auto}
 #minimap{width:172px;height:172px;border-radius:9px;display:block;background:#0a1016;border:1px solid var(--line)}
 .zone-timer{position:absolute;bottom:-11px;inset-inline-start:50%;transform:translateX(-50%);background:rgba(0,0,0,.78);border:1px solid var(--line);border-radius:999px;padding:2px 12px;font-size:12px;font-weight:900;color:var(--gold);white-space:nowrap}
@@ -234,7 +249,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .kf .w{color:var(--gold)}.kf .k{color:#ff8080}.kf .v{color:#9fc2ff}
 @keyframes slideIn{from{transform:translateX(-16px);opacity:0}to{transform:none;opacity:1}}
 
-.hud-left{position:absolute;bottom:12px;inset-inline-start:12px;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.hud-left{
+  position:absolute;bottom:12px;bottom:max(12px, env(safe-area-inset-bottom,0)); inset-inline-start:12px; inset-inline-start:max(12px, env(safe-area-inset-left,0));
+  display:flex;flex-direction:column;gap:8px;pointer-events:none
+}
 .bars{display:flex;flex-direction:column;gap:5px}
 .bar{position:relative;width:min(320px,44vw);height:20px;background:rgba(0,0,0,.6);border-radius:8px;border:1px solid rgba(255,255,255,.12);overflow:hidden}
 .bar i{display:block;height:100%;width:100%;transition:width .15s}
@@ -245,7 +263,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .gear{display:flex;gap:6px;font-size:11px;font-weight:800}
 .gear div{background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:4px 9px}
 
-.hud-right{position:absolute;bottom:12px;inset-inline-end:12px;display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none}
+.hud-right{
+  position:absolute;bottom:12px;bottom:max(12px, env(safe-area-inset-bottom,0)); inset-inline-end:12px; inset-inline-end:max(12px, env(safe-area-inset-right,0));
+  display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none
+}
 .weapons{display:flex;gap:8px}
 .wslot{display:flex;align-items:center;gap:8px;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:6px 12px;font-weight:900;font-size:13px}
 .wslot.cur{border-color:var(--gold);box-shadow:0 0 16px rgba(255,198,61,.3);background:rgba(255,198,61,.14)}
@@ -301,11 +322,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .pause .modal{display:flex;flex-direction:column;gap:10px}
 
 /* ---------- لمس ---------- */
-.touch{position:absolute;inset:0;pointer-events:none}
-.stick{position:absolute;bottom:110px;inset-inline-start:26px;width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.12),rgba(255,255,255,.03));border:2px solid rgba(255,255,255,.18);pointer-events:auto}
+.touch{position:absolute;inset:0;pointer-events:none; padding-bottom:env(safe-area-inset-bottom,0); padding-left:env(safe-area-inset-left,0); padding-right:env(safe-area-inset-right,0);}
+.stick{position:absolute;bottom:110px;bottom:max(110px, calc(env(safe-area-inset-bottom,0) + 18px)); inset-inline-start:26px; inset-inline-start:max(26px, env(safe-area-inset-left,0)); width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.12),rgba(255,255,255,.03));border:2px solid rgba(255,255,255,.18);pointer-events:auto; touch-action:none;}
 .stick i{position:absolute;top:50%;left:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff6d5,var(--gold2));box-shadow:0 6px 18px rgba(0,0,0,.5)}
-.tbtns{position:absolute;inset:auto 20px 110px auto;display:grid;grid-template-columns:repeat(3,68px);gap:10px;pointer-events:auto}
-.tbtn{width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.2);font-size:24px;backdrop-filter:blur(4px)}
+.tbtns{position:absolute;inset:auto 20px 110px auto; inset-inline-end:max(20px, env(safe-area-inset-right,0)); bottom:max(110px, calc(env(safe-area-inset-bottom,0) + 16px)); display:grid;grid-template-columns:repeat(3,68px);gap:10px;pointer-events:auto}
+.tbtn{width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.2);font-size:24px;backdrop-filter:blur(4px); touch-action:manipulation; -webkit-touch-callout:none;}
 .tbtn:active{background:rgba(255,198,61,.4)}
 .tbtn.fire{grid-column:span 1;background:radial-gradient(circle,rgba(255,90,60,.5),rgba(255,60,40,.25));font-size:30px}
 
@@ -334,17 +355,142 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .toast.ok{border-color:#41e06a;color:#a8f0bd}.toast.err{border-color:var(--danger);color:#ffb3ba}.toast.prize{border-color:var(--gold);color:var(--gold)}
 @keyframes toastIn{from{transform:translateY(-14px);opacity:0}to{transform:none;opacity:1}}
 
-/* ---------- استجابة ---------- */
+/* ========== طبقة إجبار الوضع الأفقي على الهواتف ========== */
+#rotate-overlay{
+  position:fixed; inset:0; z-index:9999;
+  display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(circle at 50% 30%, #16243a 0%, #070a14 55%, #020408 100%);
+  backdrop-filter:blur(8px);
+  padding:24px;
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .35s, visibility .35s;
+  text-align:center;
+}
+#rotate-overlay.visible{ opacity:1; visibility:visible; pointer-events:auto; }
+.rotate-card{
+  background:rgba(16,22,31,.92); border:1px solid rgba(255,198,61,.28); border-radius:20px;
+  padding:28px 24px; max-width:420px; width:94vw;
+  box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 40px rgba(255,198,61,.12);
+  animation:pop .4s ease;
+}
+.rotate-phone{ font-size:64px; line-height:1; margin-bottom:10px; position:relative; display:inline-block; animation:rotatePulse 1.6s ease-in-out infinite; }
+.rotate-phone .rotate-arrow{ position:absolute; top:-6px; inset-inline-end:-18px; font-size:28px; color:var(--gold); animation:spin 1.8s linear infinite; }
+@keyframes rotatePulse{ 0%,100%{ transform:scale(.96) rotate(0)} 50%{ transform:scale(1.04) rotate(-6deg)} }
+.rotate-card h2{ margin:8px 0 6px; font-size:clamp(22px,6vw,30px); font-weight:900; color:var(--gold); }
+.rotate-card p{ margin:0 0 14px; color:var(--txt); font-weight:700; line-height:1.6; font-size:clamp(13px,3.6vw,16px); }
+.rotate-card p span{ color:var(--dim); font-weight:600; font-size:13px; }
+.rotate-bar{ width:100%; height:8px; background:rgba(255,255,255,.08); border-radius:8px; overflow:hidden; margin:12px 0 16px; border:1px solid rgba(255,255,255,.08); }
+.rotate-bar i{ display:block; height:100%; width:42%; background:linear-gradient(90deg,var(--gold2),var(--gold)); border-radius:8px; animation:barMove 1.2s ease-in-out infinite alternate; }
+@keyframes barMove{ from{ transform:translateX(-20%) } to{ transform:translateX(140%) } }
+#btn-rotate-try{ width:100%; margin-top:4px; }
+
+/* خلفية معتمة عند الحاجة للوضع الأفقي — تلميح بصري */
+html.force-landscape #bg-fx{ filter:blur(6px) brightness(.6); }
+
+/* ========== دعم كل الأجهزة: متغيرات آمنة وهوامش ========== */
+html{ -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+html,body{ height:100%; min-height:100dvh; min-height:-webkit-fill-available; }
+body{
+  padding-top:env(safe-area-inset-top, 0px);
+  padding-bottom:env(safe-area-inset-bottom, 0px);
+  padding-left:env(safe-area-inset-left, 0px);
+  padding-right:env(safe-area-inset-right, 0px);
+}
+/* تحسين التمرير للقوائم على كل الشاشات */
+.menu-main, .modal.wide, .sb-inner{ -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+
+/* ========== استجابة شاملة — كل الأجهزة ========== */
+/* 1) الشاشات الكبيرة جداً (4K / تلفزيون) */
+@media (min-width:1600px){
+  .hero h1{ font-size:64px; }
+  .hero-3d{ width:520px; }
+  .shop-grid{ grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); }
+  .shop-grid.big{ grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); }
+  #minimap{ width:200px; height:200px; }
+}
+/* 2) دسكتوب عادي */
+@media (min-width:1200px) and (max-width:1599px){
+  .hero-3d{ width:420px; }
+}
+/* 3) تابلت أفقي / لابتوب صغير */
+@media (max-width:1180px){
+  .side-menu{ width:210px; }
+  .hero{ padding:18px; }
+  .hero-3d{ width:min(340px,32vw); }
+  .shop-grid{ grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); }
+}
+/* 4) تابلت عمودي / هاتف أفقي كبير — تحويل القائمة لصف */
 @media (max-width:980px){
   .menu-body{flex-direction:column}
-  .side-menu{width:auto;flex-direction:row;overflow-x:auto}
-  .side-btn{white-space:nowrap}
+  .side-menu{width:auto;flex-direction:row;overflow-x:auto; padding:10px; gap:6px; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .side-menu::-webkit-scrollbar{ display:none; }
+  .side-btn{white-space:nowrap; padding:11px 14px; font-size:14px; flex:0 0 auto; }
   .locker-grid{grid-template-columns:1fr}
   .hero{flex-direction:column}
-  .hero-3d{width:min(260px,60vw)}
-  #minimap{width:124px;height:124px}
+  .hero-3d{width:min(300px,62vw)}
+  #minimap{width:140px;height:140px}
   .hints{display:none}
+  .modal.wide{ width:min(96vw, 860px); }
+  .top-bar{ gap:8px; }
+  .xp-bar{ width:150px; }
 }
+/* 5) هواتف أفقية — الارتفاع صغير (الوضع المطلوب للعب) */
+@media (max-height:500px) and (orientation:landscape){
+  .screen{ padding:6px; }
+  #scr-menu{ padding:4px 8px 0; }
+  .top-bar{ padding:2px 0 6px; gap:6px; }
+  .player-card{ padding:6px 10px 6px 6px; }
+  .pc-avatar{ width:42px; height:42px; }
+  .xp-bar{ height:12px; width:120px; }
+  .season{ font-size:10px; padding:3px 10px; }
+  .hero{ padding:12px; gap:12px; }
+  .hero h1{ font-size:28px; }
+  .hero p{ font-size:13px; line-height:1.5; }
+  .hero-btns .btn-gold.big, .hero-btns .btn-ghost.big{ padding:10px 18px; font-size:15px; }
+  .hero-3d{ width:min(220px,28vw); }
+  .cards-row{ gap:8px; margin-top:8px; }
+  .stat-card{ padding:10px; }
+  .stat-card b{ font-size:20px; }
+  /* HUD أفقي مضغوط */
+  .hud-top{ padding:6px 8px; }
+  #minimap{ width:110px; height:110px; }
+  .zone-timer{ font-size:10px; padding:1px 8px; bottom:-8px; }
+  .compass{ height:20px; width:min(380px,46vw); }
+  .match-info{ padding:4px 10px; font-size:12px; gap:8px; }
+  .bars{ gap:3px; }
+  .bar{ height:14px; width:min(260px,38vw); }
+  .bar span{ font-size:10px; }
+  .hud-left{ bottom:6px; inset-inline-start:8px; }
+  .hud-right{ bottom:6px; inset-inline-end:8px; gap:6px; }
+  .ammo-box{ padding:4px 10px; }
+  .ammo-box b{ font-size:20px; }
+  .ammo-box em{ font-size:11px; max-width:90px; }
+  .wslot{ padding:4px 8px; font-size:11px; }
+  .items{ gap:4px; }
+  .item{ padding:3px 7px; font-size:10px; }
+  /* أزرار اللمس أفقية مضغوطة لكن سهلة الضغط */
+  .stick{ width:110px; height:110px; bottom:18px; inset-inline-start:14px; }
+  .stick i{ width:48px; height:48px; margin:-24px 0 0 -24px; }
+  .tbtns{ inset:auto 10px 18px auto; grid-template-columns:repeat(4,54px); gap:6px; }
+  .tbtn{ width:54px; height:54px; font-size:20px; }
+  .tbtn.fire{ font-size:24px; }
+  .chat-live{ bottom:62px; max-height:90px; font-size:11px; }
+  .crosshair{ width:32px; height:32px; }
+}
+/* 6) هواتف صغيرة أفقية جداً (iPhone SE landscape, ارتفاع 320) */
+@media (max-height:360px) and (orientation:landscape){
+  #minimap{ width:90px; height:90px; }
+  .compass{ display:none; }
+  .match-info{ font-size:11px; padding:3px 8px; }
+  .bar{ width:200px; height:12px; }
+  .hud-left{ bottom:4px; }
+  .hud-right{ bottom:4px; }
+  .tbtns{ grid-template-columns:repeat(4,48px); gap:5px; }
+  .tbtn{ width:48px; height:48px; font-size:18px; }
+  .stick{ width:96px; height:96px; }
+  .stick i{ width:40px; height:40px; margin:-20px 0 0 -20px; }
+}
+/* 7) هواتف عامة (أقل من 560 — عمودية سيراها طبقة التدوير) */
 @media (max-width:560px){
   .compass{width:66vw}
   .match-info{font-size:12px;gap:8px;padding:5px 10px}
@@ -352,4 +498,53 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   .ammo-box b{font-size:24px}
   .tbtns{grid-template-columns:repeat(3,60px);gap:8px;inset:auto 12px 100px auto}
   .tbtn{width:60px;height:60px;font-size:21px}
+  /* لكن عند التدوير أفقياً (بعد إخفاء الطبقة على بعض الأجهزة التي لا تدعم القفل) — تأكد من التخطيط */
+  .top-bar{ flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  .top-bar::-webkit-scrollbar{ display:none; }
+  .currencies{ flex-wrap:nowrap; }
+  .cur{ padding:6px 8px; font-size:13px; }
+  .player-card{ flex:0 0 auto; }
+  .modal{ padding:16px; }
+  .shop-grid, .shop-grid.big{ grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+  .card .thumb{ height:104px; }
+}
+/* 8) هواتف صغيرة جداً (320) */
+@media (max-width:360px){
+  .logo-ork{ font-size:38px; }
+  .auth-card{ padding:16px; }
+  .btn-gold.big{ font-size:16px; padding:12px 18px; }
+  .shop-grid{ grid-template-columns:repeat(auto-fill,minmax(138px,1fr)); }
+  .mode-grid{ grid-template-columns:repeat(2,1fr); }
+  .map-grid{ grid-template-columns:1fr 1fr; }
+}
+/* 9) أجهزة تعمل باللمس فقط — تكبير مناطق الضغط */
+@media (hover:none) and (pointer:coarse){
+  button, .tab, .side-btn, .mode-card, .map-card{ min-height:44px; }
+  .btn-gold, .btn-ghost{ padding-top:13px; padding-bottom:13px; }
+  input, select{ font-size:16px; } /* يمنع تكبير iOS */
+  .tbtn{ backdrop-filter:none; -webkit-backdrop-filter:none; }
+}
+/* 10) تفضيل تقليل الحركة */
+@media (prefers-reduced-motion:reduce){
+  .bg-grid{ animation:none; }
+  .btn-gold::after{ animation:none; }
+  .card:hover, .mode-card:hover, .map-card:hover{ transform:none; }
+}
+/* 11) شاشات طويلة / قصيرة نسبياً */
+@media (min-height:900px){
+  .hero{ padding:28px; }
+  .screen{ padding:20px; }
+}
+@media (max-height:700px) and (min-width:981px){
+  .hero-3d{ width:300px; }
+  .cards-row{ margin-top:8px; }
+}
+
+/* ========== إخفاء طبقة التدوير على الدسكتوب والشاشات الكبيرة ========== */
+@media (min-width:901px) and (min-height:501px){
+  #rotate-overlay{ display:none !important; }
+}
+/* على الأجهزة التي تدعم الوضع الأفقي بالفعل — لا تظهر */
+@media (orientation:landscape) and (min-width:560px){
+  #rotate-overlay.visible{ opacity:0; visibility:hidden; }
 }

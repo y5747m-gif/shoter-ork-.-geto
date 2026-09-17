@@ -10,7 +10,10 @@ export class Input2 {
     this.keys = new Set();
     this.mouse = { x: innerWidth / 2, y: innerHeight / 2, down: false, right: false };
     this.sens = 1;
-    this.touchMode = false;
+    // اكتشاف اللمس تلقائياً لكل الأجهزة (هاتف/تابلت/حتى لابتوب لمسي)
+    let coarse = false;
+    try { coarse = window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window || navigator.maxTouchPoints > 0; } catch {}
+    this.touchMode = !!coarse;
     this.stick = { active: false, id: null, dx: 0, dy: 0, cx: 0, cy: 0 };
     this.touchBtns = {};
     this.actions = [];
