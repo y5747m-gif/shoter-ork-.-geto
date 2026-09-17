@@ -93,7 +93,7 @@ export class Input2 {
       const onEnd = () => { this.stick.active = false; this.stick.dx = 0; this.stick.dy = 0; knob.style.transform = 'translate(0,0)'; };
       addEventListener('touchend', onEnd); addEventListener('mouseup', onEnd);
     }
-    for (const b of document.querySelectorAll('.tbtn')) {
+    for (const b of document.querySelectorAll('.tbtn[data-tbtn]')) {
       const name = b.dataset.tbtn;
       const press = (e) => { e.preventDefault(); this.touchBtns[name] = true; this.touchMode = true; this.onTouchBtn(name, true); };
       const release = (e) => { e.preventDefault(); this.touchBtns[name] = false; this.onTouchBtn(name, false); };

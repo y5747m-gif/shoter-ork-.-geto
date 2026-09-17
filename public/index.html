@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <title>أورك زون | ORK ZONE — باتل رويال</title>
 <meta name="theme-color" content="#0a0e14" />
+<!-- اللعبة تُصمَّم للعب بالعرض (Landscape) -->
+<meta name="screen-orientation" content="landscape" />
+<meta name="x5-orientation" content="landscape" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="manifest" href="/manifest.webmanifest" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet" />
@@ -329,6 +335,7 @@
       <button class="tbtn" data-tbtn="pickup">🎒</button>
       <button class="tbtn" data-tbtn="swap">🔀</button>
       <button class="tbtn" data-tbtn="car">🚙</button>
+      <button class="tbtn rotate" id="btn-hud-rotate" title="تشغيل بالوضع الأفقي">🔄</button>
     </div>
   </div>
 
@@ -336,6 +343,7 @@
     <div class="modal glass">
       <h2 class="title-gold">إيقاف مؤقت</h2>
       <button class="btn-gold big" id="btn-resume">متابعة</button>
+      <button class="btn-ghost" id="btn-rotate-landscape">🔄 تشغيل بالعرض (تدوير أفقي)</button>
       <button class="btn-ghost" id="btn-quit">الخروج من المباراة</button>
     </div>
   </div>
@@ -382,8 +390,21 @@
       <label class="check"><input type="checkbox" id="set-autofire" /> إطلاق تلقائي عند التصويب</label>
       <label class="check"><input type="checkbox" id="set-blood" checked /> تأثيرات الدم</label>
       <label class="check"><input type="checkbox" id="set-touch" /> أزرار اللمس (للهاتف)</label>
+      <label class="check"><input type="checkbox" id="set-landscape" /> 🔒 اللعب بالعرض (تدوير أفقي تلقائي)</label>
     </div>
-    <div class="row end"><button class="btn-gold" id="btn-settings-save">حفظ</button><button class="btn-ghost" id="btn-settings-close">إغلاق</button></div>
+    <div class="row end"><button class="btn-gold" id="btn-settings-save">حفظ</button><button class="btn-ghost" id="btn-rotate-now">🔄 تدوير أفقي الآن</button><button class="btn-ghost" id="btn-settings-close">إغلاق</button></div>
+  </div>
+</div>
+
+<!-- ================= الوضع الأفقي: أدر جهازك ================= -->
+<div id="rotate-hint" class="hidden">
+  <div class="rh-box glass">
+    <div class="rh-phone"><i class="rh-screen"></i></div>
+    <h2 class="title-gold">أدر جهازك للوضع الأفقي</h2>
+    <p>أورك زون تُلعب <b>بالعرض</b>: رؤية أوسع، تحكم أدق، وأزرار في متناول إبهاميك.</p>
+    <button class="btn-gold big" id="btn-rotate-auto">🔒 تفعيل الوضع الأفقي تلقائياً</button>
+    <button class="btn-ghost" id="btn-rotate-later">المتابعة بالوضع العمودي</button>
+    <p class="hint" id="rh-note">إن لم يدور الجهاز: أوقف «قفل اتجاه الشاشة» من مركز التحكم ثم أعد المحاولة.</p>
   </div>
 </div>
 

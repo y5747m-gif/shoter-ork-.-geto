@@ -6,6 +6,7 @@ import { API, Net } from './net.js';
 import Audio2 from './audio.js';
 import { Session } from './game.js';
 import UI from './ui.js';
+import { Orientation } from './orientation.js';
 import { MODES, MAPS, GAME } from '/shared/gamedata.js';
 
 const $ = (id) => document.getElementById(id);
@@ -28,9 +29,11 @@ class App {
     this.profile = null;
     this.ui = new UI(this);
     this.session = new Session(this);
+    /** الوضع الأفقي: كشف الاتجاه، طبقة التدوير، قفل landscape، وإعادة ضبط المقاسات */
+    this.orientation = new Orientation(this);
     this.quality = 'high';
     try { this.quality = localStorage.getItem('orkz_quality') || 'high'; } catch {}
-    const defSettings = { sfx: 0.8, music: 0.45, sens: 1, autofire: false, blood: true, touch: false };
+    const defSettings = { sfx: 0.8, music: 0.45, sens: 1, autofire: false, blood: true, touch: false, landscape: null };
     try {
       const saved = JSON.parse(localStorage.getItem('orkz_settings') || '{}');
       this.settings = { ...defSettings, ...saved };
@@ -63,6 +66,7 @@ class App {
       try { this.bindNet(); } catch {}
       try { this.bindUI(); } catch {}
       try { this.applySettings(); } catch {}
+      try { this.initOrientation(); } catch (e) { console.warn('[boot] orientation:', e && e.message); }
       try { this.session.renderer.setQuality(this.quality); } catch {}
 
       // شريط التحميل
@@ -193,6 +197,9 @@ class App {
     on('btn-add-friend', () => { const n = $('friend-name')?.value?.trim(); if (n) this.ui.addFriend(n); });
     on('btn-bp-buy', () => this.ui.buyBP());
     on('btn-resume', () => { this.session.paused = false; $('pause')?.classList.add('hidden'); });
+    on('btn-rotate-landscape', () => { this.orientation.tryLock(true); $('pause')?.classList.add('hidden'); });
+    on('btn-rotate-now', () => { this.orientation.tryLock(true); });
+    on('btn-hud-rotate', () => { this.orientation.tryLock(true); });
     on('btn-quit', () => { this.session.quit(); $('pause')?.classList.add('hidden'); });
     on('btn-res-menu', () => { this.session.quit(); });
     on('btn-res-again', () => {
@@ -265,6 +272,13 @@ class App {
     if (afEl) afEl.onchange = (e) => { this.settings.autofire = e.target.checked; if (this.session?.input) this.session.input.autoFire = e.target.checked; };
     const tchEl = $('set-touch');
     if (tchEl) tchEl.onchange = (e) => { this.settings.touch = e.target.checked; $('touch-ui')?.classList.toggle('hidden', !e.target.checked || !this.session.running); };
+    const lsEl = $('set-landscape');
+    if (lsEl) lsEl.onchange = (e) => {
+      this.settings.landscape = e.target.checked;
+      const on = this.orientation.setEnforced(e.target.checked);
+      this.ui.toast(on ? '🔒 اللعب بالوضع الأفقي: سنطلب تدوير الجهاز أفقياً' : '📱 أوقفنا إجبار الوضع الأفقي', 'ok');
+      if (on) this.orientation.tryLock(true);
+    };
     const bldEl = $('set-blood');
     if (bldEl) bldEl.onchange = (e) => { this.settings.blood = e.target.checked; if (this.session?.renderer) this.session.renderer.bloodFx = e.target.checked; };
     const vwEl = $('set-view');
@@ -292,6 +306,7 @@ class App {
     if ($('set-autofire')) $('set-autofire').checked = !!this.settings.autofire;
     if ($('set-touch')) $('set-touch').checked = !!this.settings.touch;
     if ($('set-blood')) $('set-blood').checked = this.settings.blood !== false;
+    this.syncLandscapeSetting();
     if (this.session?.input) {
       this.session.input.autoFire = !!this.settings.autofire;
       this.session.input.sens = this.settings.sens ?? 1;
@@ -304,6 +319,28 @@ class App {
       const sv = $('set-view');
       if (sv) sv.value = this.session.renderer.mode;
     }
+  }
+
+  /* ---------- الوضع الأفقي ---------- */
+  /** يفعّل وحدة الاتجاه: كشف، طبقة تدوير، قفل landscape، وإعادة ضبط المقاسات */
+  initOrientation() {
+    const o = this.orientation;
+    if (!o) return null;
+    o.enforced = (this.settings.landscape === true || this.settings.landscape === false) ? this.settings.landscape : null;
+    o.onChange = (dir) => {
+      try {
+        if (dir === 'landscape' && this.session?.running) this.ui.toast('🎮 الوضع الأفقي مفعّل — ساحة رؤية أوسع', 'ok');
+      } catch { /* لا شيء */ }
+    };
+    o.init();
+    this.syncLandscapeSetting();
+    return o;
+  }
+
+  /** يحدّث خانة «اللعب بالعرض» في الإعدادات بحسب الحالة الفعلية */
+  syncLandscapeSetting() {
+    const el = $('set-landscape');
+    if (el && this.orientation) el.checked = !!this.orientation.shouldEnforce;
   }
 
   saveSettings() {
@@ -386,6 +423,8 @@ class App {
   }
 
   startSelected(again) {
+    // داخل نقرة المستخدم: نطلب ملء الشاشة + قفل الوضع الأفقي قبل الدخول للمباراة
+    try { this.orientation.beforeMatchStart(); } catch { /* لا شيء */ }
     const mode = this._lastStart?.mode === 'offline' || !this.ui.onlineSelect ? 'offline' : 'online';
     const modeId = (again && this._lastStart?.modeId) || this.ui.selectedMode;
     const mapId = (again && this._lastStart?.mapId) || this.ui.selectedMap;

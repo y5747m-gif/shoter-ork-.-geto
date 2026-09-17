@@ -102,6 +102,8 @@ export class Renderer {
     const w = window.innerWidth, h = window.innerHeight;
     this.cv.width = Math.floor(w * this.dpr); this.cv.height = Math.floor(h * this.dpr);
     this.w = w; this.h = h;
+    // المحرك ثلاثي الأبعاد يشارك نفس الكانفس: لازم يتحدّث معه عند كل تدوير/تغيير نافذة
+    if (this.r3) { this.r3.dpr = this.dpr; this.r3.w = w; this.r3.h = h; }
   }
   setQuality(q) {
     this.quality = q;
