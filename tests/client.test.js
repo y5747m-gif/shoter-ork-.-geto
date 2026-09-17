@@ -222,6 +222,96 @@ try {
 } catch (e) { portraitErr = e; }
 check('رسم كل الشخصيات يعمل', !portraitErr, portraitErr && portraitErr.message);
 
+console.log('\n🔄 اللعب بالوضع الأفقي');
+const or = app.orientation;
+check('وحدة الوضع الأفقي مربوطة بالتطبيق', !!or && typeof or.update === 'function');
+check('شاشة عريضة تُحتسب أفقية', or.direction === 'landscape', or.direction);
+check('طبقة «أدر جهازك» موجودة في الصفحة', !!$('rotate-hint'));
+check('الطبقة مخفية في الوضع الأفقي', $('rotate-hint').classList.contains('hidden'));
+check('إعداد «اللعب بالعرض» موجود', !!$('set-landscape'));
+check('زر تدوير داخل الـ HUD موجود', !!$('btn-hud-rotate'));
+check('بيان التطبيق يثبّت الاتجاه الأفقي', (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(ROOT, 'public', 'manifest.webmanifest'), 'utf8')).orientation === 'landscape'; }
+  catch { return false; }
+})());
+check('التصميم فيه قواعد للعرض والعمودي', (() => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  return /#rotate-hint\{/.test(css) && /orientation:landscape/.test(css) && /orientation:portrait/.test(css);
+})());
+
+/* محاكاة هاتف: أبعاد النافذة + نقاط اللمس */
+const setVp = (w, h) => {
+  Object.defineProperty(window, 'innerWidth', { value: w, configurable: true, writable: true });
+  Object.defineProperty(window, 'innerHeight', { value: h, configurable: true, writable: true });
+  globalThis.innerWidth = w; globalThis.innerHeight = h;
+};
+const setTouch = (n) => { try { Object.defineProperty(window.navigator, 'maxTouchPoints', { value: n, configurable: true }); } catch { } };
+
+app.ui.selectedMode = 'solo'; app.ui.selectedMap = 'ork_island';
+app.startSelected();
+await wait(200);
+setTouch(5); setVp(390, 844);           // هاتف عمودي
+or.update();
+check('الهاتف العمودي يُكتشف عمودياً', or.portrait, or.direction);
+check('أجهزة اللمس تُجبَر على الوضع الأفقي تلقائياً', or.shouldEnforce === true);
+check('طبقة التدوير تظهر في العمودي', !$('rotate-hint').classList.contains('hidden'));
+check('الجذر يحمل صنف portrait', window.document.documentElement.classList.contains('portrait'));
+const tHold = s.match.time;
+for (let i = 0; i < 60; i++) s.update(1 / 60);
+check('المباراة تتجمّد أثناء طبقة التدوير', s.holdForRotation === true && s.match.time === tHold, `t=${s.match.time} vs ${tHold}`);
+// «المتابعة عمودياً»
+$('btn-rotate-later').click();
+check('زر المتابعة عمودياً يخفي الطبقة', $('rotate-hint').classList.contains('hidden') && or.dismissed === true);
+const tRun = s.match.time;
+s.update(1 / 60);
+check('بعد الاختيار: المحاكاة ترجع للعمل', s.match.time > tRun);
+// التدوير إلى الأفقي
+setVp(844, 390);
+or.update();
+check('بعد التدوير: الاتجاه أفقي والطبقة مخفية', or.landscape && $('rotate-hint').classList.contains('hidden'));
+check('الجذر يحمل صنف landscape', window.document.documentElement.classList.contains('landscape'));
+check('مقاسات الرسم أعيد ضبطها للعرض الجديد', s.renderer.w === 844 && s.renderer.h === 390 && s.renderer.r3.w === 844 && s.renderer.r3.h === 390,
+  `${s.renderer.w}x${s.renderer.h} / 3D:${s.renderer.r3.w}x${s.renderer.r3.h}`);
+check('اختيار المتابعة عمودياً يُصفَّر بعد التدوير', or.dismissed === false);
+// نافذة ضيقة عمودية على كمبيوتر (بلا لمس) تعامل كالهاتف
+setTouch(0); setVp(720, 960);
+or.update();
+check('نافذة ضيقة عمودية تُعامل كالهاتف', or.shouldEnforce === true && or.blocked === true && !$('rotate-hint').classList.contains('hidden'));
+// نافذة كمبيوتر عمودية عريضة: لا تُحجب أبداً
+setVp(1100, 1400);
+or.update();
+check('نافذة كمبيوتر عمودية لا تُحجب', or.shouldEnforce === false && $('rotate-hint').classList.contains('hidden'));
+// قفل الاتجاه برمجياً
+setVp(390, 844);
+let lockedTo = null, fsCalls = 0;
+window.screen.orientation = { type: 'portrait-primary', lock: async (o) => { lockedTo = o; }, addEventListener() { } };
+window.document.documentElement.requestFullscreen = () => { fsCalls++; return Promise.resolve(); };
+or.update();
+const lockRes = await or.tryLock(false);
+check('طلب ملء الشاشة تم قبل القفل', fsCalls === 1, 'calls=' + fsCalls);
+check('قفل الاتجاه طُلب أفقياً', lockedTo === 'landscape', String(lockedTo));
+check('القفل يُبلّغ عن النجاح', lockRes.locked === true && lockRes.error === null);
+check('زر القفل التلقائي يظهر عند دعم المتصفح', !$('btn-rotate-auto').classList.contains('hidden'));
+// متصفح لا يدعم قفل الاتجاه (مثل آيفون): تظهر تعليمات التدوير اليدوي
+window.screen.orientation = { type: 'portrait-primary' };
+setVp(400, 780);
+or.manualNote = false;
+const noLock = await or.requestLandscape();
+check('بلا قفل: يُبلّغ عدم الدعم ويُظهر التعليمات اليدوية',
+  noLock.locked === false && (noLock.unsupported === true || !!noLock.error) && or.manualNote === true && !$('rh-note').classList.contains('hidden'),
+  JSON.stringify(noLock));
+// إيقاف الإجبار من الإعدادات
+or.setEnforced(false);
+check('إيقاف «اللعب بالعرض» يخفي الطبقة', $('rotate-hint').classList.contains('hidden') && or.shouldEnforce === false);
+or.setEnforced(true);
+s.quit(); await wait(120);
+check('الخروج من المباراة يرفع تجميد التدوير', s.holdForRotation === false);
+// إرجاع بيئة الاختبار كما كانت
+try { delete window.screen.orientation; } catch { window.screen.orientation = undefined; }
+setTouch(0); setVp(1440, 860);
+or.enforced = null; or.dismissed = false; or.autoLockOff = false; or.update();
+check('العودة لشاشة عريضة تُخفي طبقة التدوير', $('rotate-hint').classList.contains('hidden') && or.landscape);
+
 console.log('\n📊 التقرير');
 const uniq = [...new Set(errors)].slice(0, 12);
 if (uniq.length) { console.log('  ⚠️  أخطاء مرصودة:'); uniq.forEach(e => console.log('     -', e.slice(0, 200))); }

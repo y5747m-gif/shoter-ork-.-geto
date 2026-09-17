@@ -50,6 +50,8 @@ export class Session {
     this.acc = 0;
     this.hudCache = {};
     this.dropMapReady = false;
+    /** الجهاز عمودي وطبقة التدوير ظاهرة: نوقف المحاكاة حتى يعود للعرض */
+    this.holdForRotation = false;
   }
 
   /* ============================= بدء الأوفلاين ============================= */
@@ -171,6 +173,11 @@ export class Session {
   /* ============================= الحلقة ============================= */
   update(dt) {
     if (!this.running) return;
+    // الجهاز عمودي وطبقة «أدر جهازك» ظاهرة: نوقف الزمن حتى لا يُقصى اللاعب وهو يدوّر جهازه
+    const o = this.app && this.app.orientation;
+    const hold = !!(o && o.blocked);
+    if (hold !== this.holdForRotation) this.holdForRotation = hold;
+    if (hold) { this.updateLookHint(); return; }
     if (this.paused) { this.drawPaused(); this.updateLookHint(); return; }
     const actions = this.input.drainActions();
     if (this.online) this.updateOnline(dt, actions); else this.updateOffline(dt, actions);
@@ -919,6 +926,7 @@ export class Session {
   }
   quit() {
     this.running = false;
+    this.holdForRotation = false;
     if (this.input.releaseLock) this.input.releaseLock();
     this.updateLookHint();
     if (this.online) this.app.net.send({ t: 'leave' });
