@@ -16,10 +16,66 @@
 <meta name="x5-page-mode" content="app" />
 <meta name="format-detection" content="telephone=no" />
 <meta name="msapplication-tap-highlight" content="no" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800;900&family=Orbitron:wght@700;900&display=swap" rel="stylesheet" />
+<!-- كل الموارد محلية ١٠٠٪ — لا CDN ولا خطوط خارجية: شاشة التحميل لا يمكن أن تتوقف على شبكة -->
+<link rel="stylesheet" href="/css/fonts.css" />
 <link rel="stylesheet" href="/css/style.css" />
+<script>
+  /* =======================================================================
+     مُراقب التحميل المُبكر (Fail-safe)
+     يعمل قبل أي ملف آخر في الصفحة، لذا يشطب شاشة التحميل حتى لو:
+       • فشل تحميل main.js (خطأ شبكة / 404 / متصفح لا يدعم ES Modules)
+       • تعطّل التمهيد بخطأ غير متوقع
+       • بطؤ الجهاز أو السيرفر
+     ويُظهر رسالة واضحة + زر إعادة تحميل بدل شاشة عالقة بلا نهاية.
+     ======================================================================= */
+  (function () {
+    var LIMIT = 5000, settled = false, noticeShown = false;
+    function notice(msg) {
+      if (noticeShown) return; noticeShown = true;
+      try {
+        var box = document.createElement('div');
+        box.className = 'boot-fail glass';
+        box.innerHTML = '<b>⚠️ ' + msg + '</b>' +
+          '<span>اللعبة تعمل بالكامل من السيرفر المحلي — لا تحتاج إنترنت.</span>' +
+          '<button class="btn-gold" onclick="location.reload()">إعادة المحاولة 🔄</button>';
+        document.body.appendChild(box);
+      } catch (e) { }
+    }
+    function reveal(reason) {
+      if (settled) return; settled = true;
+      var scr = document.getElementById('scr-loading');
+      if (scr) scr.classList.remove('active');
+      if (window.ORK && window.ORK.profile) {
+        var menu = document.getElementById('scr-menu');
+        if (menu) menu.classList.add('active');
+        try { window.ORK.ui.showMenu(); } catch (e) { }
+      } else {
+        var auth = document.getElementById('scr-auth');
+        if (auth) auth.classList.add('active');
+      }
+      if (reason) notice(reason);
+    }
+    // يُناديه main.js عند اكتمال التمهيد لإلغاء المراقب
+    window.__orkBootOk = function () { settled = true; clearTimeout(timer); };
+    // يُناديه main.js عند فشل التمهيد
+    window.__orkBootFail = function (msg) {
+      try { console.error('[boot]', msg); } catch (e) { }
+      reveal(msg || 'تعذّر إتمام تجهيز اللعبة');
+    };
+    var timer = setTimeout(function () {
+      if (window.ORK && window.ORK.bootDone) return;      // التمهيد اكتمل
+      reveal(window.ORK
+        ? 'التحميل يستغرق وقتاً أطول من المتوقع'
+        : 'تعذّر تحميل ملفات اللعبة — أعد المحاولة أو حدّث متصفحك');
+    }, LIMIT);
+    window.addEventListener('error', function (e) {
+      var t = e && e.target;
+      if (t && t.tagName === 'SCRIPT' && /main\.js/.test(t.src || '')) {
+        window.__orkBootFail('تعذّر تحميل ملفات اللعبة');
+      }
+    }, true);
+  })();
+</script>
 </head>
 <body>
 <!-- طبقة إجبار الوضع الأفقي على الهواتف -->
@@ -30,6 +86,7 @@
     <p>اللعبة تعمل بالوضع الأفقي فقط<br><span>قم بتدوير هاتفك أفقياً للمتابعة</span></p>
     <div class="rotate-bar"><i></i></div>
     <button class="btn-gold" id="btn-rotate-try">حاول قفل الشاشة أفقياً</button>
+    <button class="btn-ghost" id="btn-rotate-anyway">متابعة على أي حال</button>
   </div>
 </div>
 <div id="bg-fx"><canvas id="bg-canvas"></canvas><div class="bg-grid"></div><div class="bg-vignette"></div></div>
@@ -413,32 +470,18 @@
 <div class="modal-wrap hidden" id="modal-wrap"><div class="modal glass" id="modal-body"></div></div>
 
 <script>
-  // مؤقت أمان: يضمن عدم بقاء شاشة التحميل عالقة بأي حال من الأحوال
-  window.__loadingWatchdog = setTimeout(function() {
-    var scr = document.getElementById('scr-loading');
-    if (scr && scr.classList.contains('active')) {
-      console.warn('[watchdog] إنهاء شاشة التحميل قسراً لعدم الاستجابة');
-      scr.classList.remove('active');
-      var auth = document.getElementById('scr-auth');
-      var menu = document.getElementById('scr-menu');
-      if (window.ORK && window.ORK.profile) {
-        if (menu) menu.classList.add('active');
-        try { window.ORK.ui.showMenu(); } catch(e){}
-      } else {
-        if (auth) auth.classList.add('active');
-      }
-    }
-  }, 3500);
-</script>
-<script>
   // ========= إدارة الوضع الأفقي ودعم كل الأجهزة =========
   (function(){
-    var overlay = null;
+    var overlay = null, bypass = false;
     var isCoarse = false;
     try { isCoarse = window.matchMedia('(pointer: coarse)').matches; } catch(e){}
-    function isMobileish(){ return isCoarse || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || Math.min(innerWidth, innerHeight) <= 900; }
+    // ملاحظة: حجم النافذة وحده لا يجعل الجهاز هاتفاً (كثير من نوافذ الكمبيوتر أقصر من ٩٠٠ بكسل)
+    // لذلك نعتمد على اللمس/مؤشر coarse/وكيل المستخدم فقط — وإلا حُجب الكمبيوتر بطبقة «دوّر الجهاز».
+    var hasTouch = false;
+    try { hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0); } catch(e){}
+    function isMobileish(){ return isCoarse || (hasTouch && Math.min(innerWidth, innerHeight) <= 900) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent); }
     function isPortrait(){ return innerHeight > innerWidth; }
-    function needsLandscape(){ return isMobileish() && isPortrait() && Math.max(innerWidth, innerHeight) < 1100; }
+    function needsLandscape(){ return !bypass && isMobileish() && isPortrait() && Math.max(innerWidth, innerHeight) < 1100; }
     function update(){
       if(!overlay) overlay = document.getElementById('rotate-overlay');
       if(!overlay) return;
@@ -475,6 +518,8 @@
     window.addEventListener('touchend', once, {once:true});
     window.addEventListener('click', once);
     document.addEventListener('click', function(e){
+      var any = e.target.closest('#btn-rotate-anyway');
+      if(any){ e.preventDefault(); bypass = true; update(); return; }
       var btn = e.target.closest('#btn-rotate-try');
       if(!btn) return;
       e.preventDefault();
@@ -492,6 +537,6 @@
     update();
   })();
 </script>
-<script type="module" src="/js/main.js"></script>
+<script type="module" src="/js/main.js" onerror="window.__orkBootFail && window.__orkBootFail('تعذّر تحميل ملفات اللعبة (main.js)')"></script>
 </body>
 </html>

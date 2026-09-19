@@ -38,6 +38,7 @@ class App {
       this.settings = { ...defSettings };
     }
     this._loadIt = null;
+    this.bootDone = false;
   }
 
   detectDevice() {
@@ -45,7 +46,8 @@ class App {
       const coarse = window.matchMedia('(pointer: coarse)').matches;
       const touch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
       const small = Math.min(innerWidth, innerHeight) <= 900;
-      const isMobile = coarse || touch || small || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      // نافذة قصيرة على الكمبيوتر ليست هاتفاً: نعتمد اللمس/coarse/وكيل المستخدم فقط
+      const isMobile = coarse || (touch && small) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       // ضبط الجودة تلقائياً على الهواتف المتوسطة
       if (isMobile && this.quality === 'high' && navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) {
         // خفّض الجودة قليلاً على الأجهزة الضعيفة فقط إذا لم يخترها المستخدم
@@ -94,7 +96,7 @@ class App {
       let ok = false;
       if (this.token) {
         try {
-          const r = await API.get('/api/profile?token=' + encodeURIComponent(this.token));
+          const r = await API.get('/api/profile?token=' + encodeURIComponent(this.token), 4000);
           if (r && r.profile) {
             this.profile = r.profile;
             ok = true;
@@ -130,10 +132,9 @@ class App {
       const wait = Math.max(0, 500 - (performance.now() - t0));
       if (wait) await sleep(wait);
 
-      // إنهاء شاشة التحميل وإلغاء مؤقت الأمان
-      if (typeof window !== 'undefined' && window.__loadingWatchdog) {
-        clearTimeout(window.__loadingWatchdog);
-      }
+      // إنهاء شاشة التحميل وإبلاغ المراقب المبكر بنجاح التمهيد
+      this.bootDone = true;
+      try { if (typeof window !== 'undefined' && window.__orkBootOk) window.__orkBootOk(); } catch {}
       $('scr-loading')?.classList.remove('active');
       if (ok) {
         try { this.ui.showMenu(); } catch (e) {
@@ -147,22 +148,22 @@ class App {
     } catch (err) {
       console.error('[boot] uncaught error:', err);
       if (this._loadIt) { clearInterval(this._loadIt); this._loadIt = null; }
-      if (typeof window !== 'undefined' && window.__loadingWatchdog) {
-        clearTimeout(window.__loadingWatchdog);
-      }
+      this.bootDone = true;
       $('scr-loading')?.classList.remove('active');
       $('scr-auth')?.classList.add('active');
+      // رسالة واضحة + زر إعادة تحميل بدل شاشة صامتة
+      try { if (typeof window !== 'undefined' && window.__orkBootFail) window.__orkBootFail('حدث خطأ أثناء تجهيز اللعبة'); } catch {}
     }
     this.loop();
   }
 
   loadingAnim() {
-    let p = 0;
     const el = $('load-fill');
     if (!el) return;
     this._loadIt = setInterval(() => {
-      p = Math.min(38, p + Math.random() * 6);
-      el.style.width = p + '%';
+      const cur = parseFloat(el.style.width) || 0;
+      if (cur >= 38) return;                       // خطوات التمهيد سبقتنا — لا نرجع الشريط للوراء
+      el.style.width = Math.min(38, cur + Math.random() * 6) + '%';
     }, 120);
     setTimeout(() => {
       if (this._loadIt) { clearInterval(this._loadIt); this._loadIt = null; }
@@ -492,5 +493,8 @@ class App {
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const app = new App();
 window.ORK = app;
-app.boot();
+app.boot().catch((e) => {
+  console.error('[main] boot failed:', e);
+  try { if (typeof window !== 'undefined' && window.__orkBootFail) window.__orkBootFail('تعذّر تشغيل اللعبة'); } catch {}
+});
 export default app;

@@ -97,6 +97,10 @@ check('الوحدات تُحمّل بلا أخطاء', errors.length === 0, erro
 check('شاشة التحميل اشتغلت', !!$('load-fill'));
 check('واجهة اللاعب متاحة عالمياً', !!window.ORK);
 const app = window.ORK;
+// شاشة التحميل يجب أن تنتهي دائماً — لا تعليق عند «جاري تجهيز الساحة»
+check('شاشة التحميل انتهت بعد التمهيد', !$('scr-loading').classList.contains('active'));
+check('شاشة الدخول ظهرت بعد التمهيد', $('scr-auth').classList.contains('active'));
+check('التمهيد أعلن اكتماله للمراقب المبكر', app.bootDone === true);
 
 console.log('\n🔑 الدخول والقائمة');
 app.audio.enabled = false;

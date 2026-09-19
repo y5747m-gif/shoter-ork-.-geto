@@ -8,7 +8,9 @@
   --line:rgba(255,198,61,.22); --txt:#e8eef7; --dim:#9aa8ba;
   --hp:#41e06a; --sh:#3ea6ff; --bo:#ffd23d; --danger:#ff4757;
   --r:14px; --sh-lg:0 18px 50px rgba(0,0,0,.6);
-  --font:'Cairo',system-ui,'Segoe UI',Tahoma,sans-serif; --display:'Orbitron','Cairo',sans-serif;
+  /* الخطوط مضمّنة محلياً (fonts.css) — والبدائل الآمنة تعمل لو لم يتوفر أي منها */
+  --font:'Cairo','Noto Sans Arabic','Noto Kufi Arabic','Segoe UI',system-ui,Tahoma,'Arial Unicode MS',sans-serif;
+  --display:'Orbitron','Cairo','Segoe UI',system-ui,sans-serif;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{height:100%; height:-webkit-fill-available; -webkit-text-size-adjust:100%; text-size-adjust:100%;}
@@ -383,6 +385,20 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .rotate-bar i{ display:block; height:100%; width:42%; background:linear-gradient(90deg,var(--gold2),var(--gold)); border-radius:8px; animation:barMove 1.2s ease-in-out infinite alternate; }
 @keyframes barMove{ from{ transform:translateX(-20%) } to{ transform:translateX(140%) } }
 #btn-rotate-try{ width:100%; margin-top:4px; }
+#btn-rotate-anyway{ width:100%; margin-top:10px; }
+
+/* ========== رسالة الفشل الآمنة (لا شاشة تحميل عالقة أبداً) ========== */
+.boot-fail{
+  position:fixed; z-index:10000; left:50%; top:16px; transform:translateX(-50%);
+  width:min(520px,92vw); padding:14px 16px; text-align:center;
+  display:flex; flex-direction:column; gap:8px; align-items:center;
+  border:1px solid rgba(255,71,87,.5); border-radius:14px;
+  background:rgba(20,10,14,.94); box-shadow:0 18px 50px rgba(0,0,0,.6);
+  animation:toastIn .3s ease;
+}
+.boot-fail b{ color:#ffb3ba; font-size:15px; }
+.boot-fail span{ color:var(--dim); font-size:12.5px; line-height:1.6; }
+.boot-fail .btn-gold{ padding:9px 18px; font-size:14px; }
 
 /* خلفية معتمة عند الحاجة للوضع الأفقي — تلميح بصري */
 html.force-landscape #bg-fx{ filter:blur(6px) brightness(.6); }
