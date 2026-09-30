@@ -430,18 +430,23 @@ function collideCircleRect(px, py, r, o) {
 }
 export function resolveCollisions(world, p, radius, obstacles) {
   const list = obstacles || world.grid.query(p.x, p.y, radius + 80, []);
-  for (const o of list) {
-    if (!o.solid) continue;
-    if (o.kind === 'tree') {
-      const d = dist(p.x, p.y, o.x, o.y), rr = o.r + radius * 0.7;
-      if (d < rr && d > 0) { const k = (rr - d) / d; p.x += (p.x - o.x) * k; p.y += (p.y - o.y) * k; }
-    } else if (o.kind === 'rock' || o.kind === 'crate') {
-      const d = dist(p.x, p.y, o.x, o.y), rr = o.r + radius * 0.55;
-      if (d < rr && d > 0) { const k = (rr - d) / d; p.x += (p.x - o.x) * k; p.y += (p.y - o.y) * k; }
-    } else {
-      const c = collideCircleRect(p.x, p.y, radius, o);
-      if (c) { p.x += c.nx * c.pen; p.y += c.ny * c.pen; }
+  // مرّتان لحلّ الحالات التي يتداخل فيها اللاعب مع أكثر من عائق في آنٍ واحد
+  for (let pass = 0; pass < 2; pass++) {
+    let moved = false;
+    for (const o of list) {
+      if (!o.solid) continue;
+      if (o.kind === 'tree') {
+        const d = dist(p.x, p.y, o.x, o.y), rr = o.r + radius * 0.7;
+        if (d < rr && d > 0) { const k = (rr - d) / d; p.x += (p.x - o.x) * k; p.y += (p.y - o.y) * k; moved = true; }
+      } else if (o.kind === 'rock' || o.kind === 'crate') {
+        const d = dist(p.x, p.y, o.x, o.y), rr = o.r + radius * 0.55;
+        if (d < rr && d > 0) { const k = (rr - d) / d; p.x += (p.x - o.x) * k; p.y += (p.y - o.y) * k; moved = true; }
+      } else {
+        const c = collideCircleRect(p.x, p.y, radius, o);
+        if (c) { p.x += c.nx * c.pen; p.y += c.ny * c.pen; moved = true; }
+      }
     }
+    if (!moved) break;
   }
   // حدود الخريطة
   const half = world.half;
@@ -455,6 +460,22 @@ export function resolveCollisions(world, p, radius, obstacles) {
       else break;
     }
     p.x = clamp(p.x, -half, half); p.y = clamp(p.y, -half, half);
+  }
+  return p;
+}
+/**
+ * تحريك جسم مع منع الاختراق (tunneling): يقسّم الإزاحة إلى خطوات لا تتجاوز نصف نصف القطر،
+ * ويحلّ التصادم بعد كل خطوة. هذا يمنع مرور اللاعب عبر الجدران الرقيقة عند السرعة العالية
+ * أو عند انخفاض الإطارات (dt كبير).
+ */
+export function sweepMove(world, p, dx, dy, radius) {
+  const len = Math.hypot(dx, dy);
+  const maxStep = Math.max(4, radius * 0.5);
+  const steps = len > maxStep ? Math.ceil(len / maxStep) : 1;
+  const sx = dx / steps, sy = dy / steps;
+  for (let i = 0; i < steps; i++) {
+    p.x += sx; p.y += sy;
+    resolveCollisions(world, p, radius);
   }
   return p;
 }
@@ -637,13 +658,14 @@ export function stepPlayer(match, p, dt, input, hooks) {
   // الهبوط بالمظلة
   if (p.dropState === 'freefall' || p.dropState === 'parachute') {
     p.jumpT += dt;
-    const steerSpeed = p.dropState === 'freefall' ? 190 : 250;
+    const steerSpeed = p.dropState === 'freefall' ? 240 : 300;
     let mx = input ? input.mx : 0, my = input ? input.my : 0;
     const m = Math.hypot(mx, my) || 1;
     p.x += (mx / m) * steerSpeed * dt; p.y += (my / m) * steerSpeed * dt;
-    const sink = p.dropState === 'freefall' ? (p.z > 260 ? 165 : 120) : 105;
+    // نزول أسرع بكثير: سقوط حر سريع ثم هبوط بالمظلة معقول — يقلّص زمن القفزة للنصف
+    const sink = p.dropState === 'freefall' ? (p.z > 260 ? 430 : 320) : 230;
     p.z = Math.max(0, p.z - sink * dt);
-    if (p.dropState === 'freefall' && p.z <= 320) { p.dropState = 'parachute'; p.z = 320; }
+    if (p.dropState === 'freefall' && p.z <= 300) { p.dropState = 'parachute'; p.z = 300; }
     if (p.z <= 0) {
       p.dropState = 'landed'; p.z = 0; p.landedT = match.time;
       resolveCollisions(world, p, 16);
@@ -717,8 +739,8 @@ export function stepPlayer(match, p, dt, input, hooks) {
   p.vx = lerp(p.vx, mx * speed, dt * 14);
   p.vy = lerp(p.vy, my * speed, dt * 14);
   const prevX = p.x, prevY = p.y;
-  p.x += p.vx * dt; p.y += p.vy * dt;
-  resolveCollisions(world, p, 15);
+  // حركة مع منع الاختراق عبر الجدران (حتى عند السرعة العالية أو تهنيج الإطارات)
+  sweepMove(world, p, p.vx * dt, p.vy * dt, 15);
   p.distance += dist(prevX, prevY, p.x, p.y);
 
   // آثار الأقدام + صوت

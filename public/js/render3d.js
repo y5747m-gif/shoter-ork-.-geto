@@ -83,11 +83,16 @@ export function rgbOf(hex) { return _rgbOf(hex); }
 const LX = -0.42, LY = -0.34, LZ = 0.84;
 
 /* مستويات تفاصيل حسب الجودة */
+/*
+ * ملاحظة مهمّة للأداء: هذا راسم ثلاثي الأبعاد برمجيّ يرسم كل الأوجه على Canvas 2D،
+ * لذا تكلفة الرسم تتناسب طردياً مع عدد البكسلات (dpr²). خفض dpr هو أقوى مكسب للأداء،
+ * لذلك حدّدنا dpr بقيم معقولة + مقياس دقة تكيّفي (renderScale) يهبط تلقائياً عند التهنيج.
+ */
 const QUALITY = {
-  low:    { dpr: 1,    dist: 2600, fog: [1500, 2900],  trees: 1, detail: 0, parts: 240,  weather: 0,   clouds: 0, shadows: 0 },
-  medium: { dpr: 1.25, dist: 3600, fog: [2200, 4100],  trees: 1, detail: 1, parts: 500,  weather: 70,  clouds: 5, shadows: 1 },
-  high:   { dpr: 2,    dist: 4600, fog: [2800, 5400], trees: 1, detail: 1, parts: 800,  weather: 130, clouds: 8, shadows: 1 },
-  ultra:  { dpr: 2,    dist: 5800, fog: [3500, 6600], trees: 1, detail: 1, parts: 1200, weather: 200, clouds: 11, shadows: 1 },
+  low:    { dpr: 1,    dist: 2400, fog: [1400, 2700],  trees: 1, detail: 0, parts: 200,  weather: 0,   clouds: 0, shadows: 0 },
+  medium: { dpr: 1.1,  dist: 3200, fog: [2000, 3700],  trees: 1, detail: 1, parts: 420,  weather: 60,  clouds: 4, shadows: 1 },
+  high:   { dpr: 1.35, dist: 4000, fog: [2600, 4800],  trees: 1, detail: 1, parts: 650,  weather: 110, clouds: 7, shadows: 1 },
+  ultra:  { dpr: 1.6,  dist: 5000, fog: [3200, 6000],  trees: 1, detail: 1, parts: 950,  weather: 160, clouds: 10, shadows: 1 },
 };
 
 /* ============================= الطقس لكل خريطة ============================= */
@@ -149,6 +154,10 @@ export class Renderer3D {
     this.fogNear = 1200; this.fogFar = 4400;
     this.drawDist = 4400;
     this.cfg = QUALITY.high;
+    /* مقياس دقة تكيّفي: يهبط تلقائياً عند انخفاض معدل الإطارات ويرتفع عند توفّر الأداء */
+    this.renderScale = 1;
+    this._frameMs = 16;     // متوسط زمن الإطار (EMA) بالميلي ثانية
+    this._adaptT = 0;       // مؤقّت بين تعديلات المقياس
     this._corners = new Float64Array(24);
     this._scratch = new Float64Array(4);
     this._clipA = new Float64Array(64);
@@ -158,12 +167,40 @@ export class Renderer3D {
   }
 
   resize() {
-    const w = (typeof window !== 'undefined' ? window.innerWidth : 1280) || 1280;
-    const h = (typeof window !== 'undefined' ? window.innerHeight : 720) || 720;
-    this.dpr = Math.min(this.cfg.dpr, (typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1));
+    // نعتمد visualViewport (يطابق حجم العرض الفعلي على الهاتف مع شريط العنوان المتحرك)
+    // حتى لا يختلف حجم مخزّن الرسم عن مقاس CSS فتظهر الصورة ممطوطة أو ضبابية.
+    const vv = (typeof window !== 'undefined') ? window.visualViewport : null;
+    const w = (vv ? Math.floor(vv.width) : (typeof window !== 'undefined' ? window.innerWidth : 1280)) || 1280;
+    const h = (vv ? Math.floor(vv.height) : (typeof window !== 'undefined' ? window.innerHeight : 720)) || 720;
+    const devDpr = (typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1);
+    let cap = this.cfg.dpr;
+    // على الهواتف الأفقية (ارتفاع منخفض) نخفض الدقة أكثر لتثبيت الأداء
+    if (h <= 500 && w > h) cap = Math.min(cap, 1.2);
+    // dpr نهائي = حد الجودة × دقة الجهاز × المقياس التكيّفي (لا يتجاوز حدّ الجودة أبداً)
+    this.dpr = Math.max(0.5, Math.min(cap, devDpr) * this.renderScale);
     this.cv.width = Math.max(2, Math.floor(w * this.dpr));
     this.cv.height = Math.max(2, Math.floor(h * this.dpr));
+    // ثبّت مقاس CSS ليطابق منطقة العرض — يمنع تعطّل/تشوّه الصورة عند تغيّر النافذة
+    if (this.cv.style) { this.cv.style.width = w + 'px'; this.cv.style.height = h + 'px'; }
     this.w = w; this.h = h;
+  }
+  /** ضبط الدقة تلقائياً حسب زمن الإطار للحفاظ على سلاسة اللعب على كل الأجهزة */
+  _adaptResolution(dt) {
+    const ms = Math.min(120, dt * 1000);
+    // متوسط منزلق يمنع التذبذب السريع
+    this._frameMs += (ms - this._frameMs) * 0.12;
+    this._adaptT += dt;
+    if (this._adaptT < 0.6) return;         // لا نعدّل الدقة أكثر من مرة كل ٠٫٦ ثانية
+    this._adaptT = 0;
+    const fm = this._frameMs;
+    let s = this.renderScale;
+    if (fm > 24 && s > 0.6) s -= 0.12;       // أبطأ من ~42 إطار/ث → اخفض الدقة
+    else if (fm < 15 && s < 1) s += 0.08;    // أسرع من ~66 إطار/ث → ارفع الدقة تدريجياً
+    s = Math.max(0.6, Math.min(1, s));
+    if (Math.abs(s - this.renderScale) > 0.001) {
+      this.renderScale = s;
+      this.resize();
+    }
   }
   setQuality(q) {
     this.quality = q || 'high';
@@ -427,6 +464,8 @@ export class Renderer3D {
     else if (view.dropPhase) this._drawDropOverlay(ctx, view);
     // تحديث كاميرا الراسم ثنائي الأبعاد (يُستخدم للـ HUD والتوافق)
     if (this.host) { this.host.cam.x = this.cam.x; this.host.cam.y = this.cam.y; }
+    // ضبط الدقة تلقائياً حسب الأداء (يحافظ على السلاسة دون تدخل اللاعب)
+    this._adaptResolution(dt);
   }
 
   /* ---------- الكاميرا ---------- */
@@ -1216,36 +1255,71 @@ export class Renderer3D {
     const wpn = p.w ? WEAPONS[p.w] : null;
     const shoulderZ = torsoZ + 0.16 * m;
     const hold = !!wpn && wpn.type !== 'melee' && !knocked && !dead && !prone;
-    const armA = hold ? -1.15 : sw2 * 0.5;
-    const foreA = hold ? -0.35 : (p.rl ? -1.2 : sw2 * 0.35);
+    // هندسة حمل السلاح: سلاح أفقي أمام الصدر جهة اليمين، اليدان تقبضان عليه بوضوح
+    const gunX = 0.1 * m;                    // انزياح بسيط لليمين
+    const gunZ = shoulderZ - 0.14 * m;        // ارتفاع الصدر
+    const gripY = 0.16 * m;                    // مقبض الزناد (اليد الخلفية)
+    const foreY = 0.42 * m;                    // المقبض الأمامي (اليد الساندة)
     if (lod === 0) {
-      for (const [side, sgn] of [[-1, sw2], [1, sw]]) {
-        const a1 = hold ? armA : sgn * 0.5, a2 = hold ? foreA : (p.rl ? -1.2 : sgn * 0.35);
-        const sx = side * 0.25 * m;
-        part(sx, hold ? 0.06 * m : 0, shoulderZ - 0.15 * m, 0.11 * m, 0.12 * m, 0.3 * m, tint(body, 0.06), a1, shoulderZ);
-        const elbowZ = shoulderZ - 0.3 * m;
-        const ey = (hold ? 0.06 * m : 0) + Math.sin(-a1) * 0.3 * m;
-        part(sx, ey + (hold ? 0.04 * m : 0), elbowZ - 0.13 * m, 0.1 * m, 0.11 * m, 0.27 * m, tone, a1 + a2, elbowZ);
-        part(sx, ey + (hold ? 0.1 * m : 0) + Math.sin(-(a1 + a2)) * 0.27 * m * 0.5, elbowZ - 0.26 * m, 0.1 * m, 0.1 * m, 0.09 * m, tone, a1 + a2, elbowZ);
+      // ذراعان في وضعية الإمساك: اليد الأمامية تمتد إلى المقدمة، والخلفية تقبض على المقبض
+      // support=true للذراع الأمامية الساندة
+      const arms = hold ? [['front'], ['rear']] : [[-1, sw2], [1, sw]];
+      for (const a of arms) {
+        if (hold) {
+          const support = a[0] === 'front';
+          const sx = support ? -0.24 * m : 0.24 * m;              // كتف
+          const a1 = support ? -1.0 : -0.95;                       // رفع للأمام
+          const a2 = support ? -0.7 : -0.4;                        // ثني الكوع
+          const handX = support ? foreY : gripY;                   // (غير مستخدم مباشرة، للوضوح)
+          // العضد
+          part(sx, 0.05 * m, shoulderZ - 0.14 * m, 0.11 * m, 0.12 * m, 0.28 * m, tint(body, 0.06), a1, shoulderZ);
+          const elbowZ = shoulderZ - 0.28 * m;
+          const ey = 0.05 * m + Math.sin(-a1) * 0.28 * m;
+          // الساعد يميل نحو محور السلاح أفقياً (نقرّب x من gunX ليصل إلى السلاح)
+          const fx = sx + (gunX - sx) * (support ? 0.95 : 0.8);
+          part(fx, ey + 0.04 * m, elbowZ - 0.13 * m, 0.1 * m, 0.11 * m, 0.28 * m, tone, a1 + a2, elbowZ);
+          // كف اليد على السلاح
+          part(fx, (support ? foreY : gripY), gunZ - 0.02 * m, 0.1 * m, 0.11 * m, 0.11 * m, tone, 0, gunZ);
+        } else {
+          const [side, sgn] = a;
+          const a1 = sgn * 0.5, a2 = (p.rl ? -1.2 : sgn * 0.35);
+          const sx = side * 0.25 * m;
+          part(sx, 0, shoulderZ - 0.15 * m, 0.11 * m, 0.12 * m, 0.3 * m, tint(body, 0.06), a1, shoulderZ);
+          const elbowZ = shoulderZ - 0.3 * m;
+          const ey = Math.sin(-a1) * 0.3 * m;
+          part(sx, ey, elbowZ - 0.13 * m, 0.1 * m, 0.11 * m, 0.27 * m, tone, a1 + a2, elbowZ);
+          part(sx, ey + Math.sin(-(a1 + a2)) * 0.27 * m * 0.5, elbowZ - 0.26 * m, 0.1 * m, 0.1 * m, 0.09 * m, tone, a1 + a2, elbowZ);
+        }
       }
     } else if (lod === 1) {
-      for (const side of [-1, 1]) part(side * 0.25 * m, hold ? 0.1 * m : 0, shoulderZ - 0.22 * m, 0.12 * m, 0.14 * m, 0.52 * m, tint(body, 0.06), hold ? -1.1 : sw * 0.4, shoulderZ);
-    }
-    // السلاح
-    if (hold) {
-      const gunLen = (wpn.type === 'sniper' || wpn.type === 'lmg') ? 1.15 * m : wpn.type === 'pistol' ? 0.32 * m : wpn.type === 'shotgun' ? 0.95 * m : 0.8 * m;
-      const gz = shoulderZ - 0.16 * m, gy = 0.34 * m;
-      if (lod === 0) {
-        part(0.06 * m, gy, gz, 0.07 * m, gunLen * 0.55, 0.1 * m, '#22262c', -1.5, gz);
-        part(0.06 * m, gy + gunLen * 0.42, gz, 0.05 * m, gunLen * 0.5, 0.05 * m, '#3a4048', -1.5, gz);
-        part(0.06 * m, gy - gunLen * 0.1, gz - 0.09 * m, 0.06 * m, 0.12 * m, 0.2 * m, '#1b1e23', -1.5, gz);
-        if ((p.zoom || 1) > 1.3) part(0.06 * m, gy + 0.05 * m, gz + 0.09 * m, 0.05 * m, 0.16 * m, 0.06 * m, '#111111', -1.5, gz);
+      if (hold) {
+        part(-0.2 * m, foreY * 0.7, shoulderZ - 0.18 * m, 0.12 * m, 0.4 * m, 0.13 * m, tint(body, 0.06), -0.9, shoulderZ);
+        part(0.22 * m, gripY, shoulderZ - 0.18 * m, 0.12 * m, 0.3 * m, 0.13 * m, tint(body, 0.06), -0.8, shoulderZ);
       } else {
-        part(0.06 * m, gy + gunLen * 0.2, gz, 0.07 * m, gunLen * 0.9, 0.09 * m, '#22262c', -1.5, gz);
+        for (const side of [-1, 1]) part(side * 0.25 * m, 0, shoulderZ - 0.22 * m, 0.12 * m, 0.14 * m, 0.52 * m, tint(body, 0.06), sw * 0.4, shoulderZ);
+      }
+    }
+    // السلاح — أفقي، السبطانة للأمام، محمول بين اليدين
+    if (hold) {
+      const gunLen = (wpn.type === 'sniper' || wpn.type === 'lmg') ? 1.1 * m : wpn.type === 'pistol' ? 0.34 * m : wpn.type === 'shotgun' ? 0.9 * m : 0.78 * m;
+      const midY = (gripY + foreY) / 2;
+      if (lod === 0) {
+        // الجسم الرئيسي (مستقبِل السلاح)
+        part(gunX, midY, gunZ, 0.09 * m, gunLen * 0.5, 0.13 * m, '#2a2f36', 0, gunZ, { topColor: '#3b434c' });
+        // السبطانة للأمام
+        part(gunX, foreY + gunLen * 0.28, gunZ + 0.01 * m, 0.055 * m, gunLen * 0.42, 0.07 * m, '#15181c', 0, gunZ);
+        // المخزن أسفل المستقبِل
+        part(gunX, midY - 0.02 * m, gunZ - 0.13 * m, 0.07 * m, 0.11 * m, 0.22 * m, '#1b1e23', 0.25, gunZ - 0.13 * m);
+        // الأخمص للخلف نحو الكتف
+        part(gunX, gripY - gunLen * 0.3, gunZ + 0.01 * m, 0.07 * m, gunLen * 0.28, 0.11 * m, '#2b2118', 0, gunZ);
+        // منظار عند الأسلحة المكبّرة
+        if ((p.zoom || 1) > 1.3) part(gunX, midY, gunZ + 0.11 * m, 0.05 * m, 0.16 * m, 0.07 * m, '#111111', 0, gunZ);
+      } else {
+        part(gunX, midY, gunZ, 0.08 * m, gunLen * 0.9, 0.1 * m, '#262b31', 0, gunZ);
       }
       if (p.fireFx > 0) {
-        const q = tf(0.06 * m, gy + gunLen * 0.75, gz + 0.02 * m, -1.5, gz);
-        this._billboard(q[0], q[1], 0.5 * m * p.fireFx, 0.5 * m * p.fireFx, 'rgba(255,220,120,.9)', q[2] - 0.25 * m * p.fireFx);
+        const q = tf(gunX, foreY + gunLen * 0.6, gunZ + 0.01 * m, 0, gunZ);
+        this._billboard(q[0], q[1], 0.5 * m * p.fireFx, 0.5 * m * p.fireFx, 'rgba(255,220,120,.9)', q[2]);
       }
     } else if (wpn && wpn.type === 'melee' && lod === 0) {
       part(0.26 * m, 0.3 * m, shoulderZ - 0.3 * m, 0.04 * m, 0.55 * m, 0.08 * m, '#c0c6cf', -1.2, shoulderZ - 0.3 * m);
