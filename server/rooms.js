@@ -243,7 +243,14 @@ export function tick() {
           continue;
         }
         if (bot.client) continue;
-        const inp = botThink(match, bot, dt);
+        // تحديث قرار البوت ٢٠ مرة/ثانية كافٍ؛ المحاكاة نفسها تبقى على
+        // ترددها الكامل، وبذلك لا تستهلك الغرف كل المعالج مع ٤٠ بوتاً.
+        bot.aiThinkT = (bot.aiThinkT || 0) - dt;
+        if (bot.aiThinkT <= 0 || !bot.aiInput) {
+          bot.aiThinkT = 0.05;
+          bot.aiInput = botThink(match, bot, dt);
+        }
+        const inp = bot.aiInput;
         inputs[bot.id] = inp;
         if (inp.jump) dropPlayer(match, bot, inp.jump.x, inp.jump.y);
         if (inp.pickup) tryPickup(match, bot, inp.pickup);

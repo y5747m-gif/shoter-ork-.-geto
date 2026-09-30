@@ -208,7 +208,14 @@ export class Session {
         if (bot.respawnT <= 0) this.respawnTdm(bot);
         continue;
       }
-      const inp = botThink(match, bot, dt);
+      // التفكير لا يحتاج ٦٠ مرة/ثانية. تحديثه عند ٢٠ هرتز يقلل كلفة
+      // البحث عن الأهداف وخطوط الرؤية، بينما تبقى المحاكاة نفسها ثابتة.
+      bot.aiThinkT = (bot.aiThinkT || 0) - dt;
+      if (bot.aiThinkT <= 0 || !bot.aiInput) {
+        bot.aiThinkT = 0.05;
+        bot.aiInput = botThink(match, bot, dt);
+      }
+      const inp = bot.aiInput;
       inputs[bot.id] = inp;
       if (inp.jump) dropPlayer(match, bot, inp.jump.x, inp.jump.y);
       if (inp.pickup) tryPickup(match, bot, inp.pickup);

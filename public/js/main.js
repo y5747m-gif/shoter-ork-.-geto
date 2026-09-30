@@ -33,8 +33,10 @@ class App {
       // إيقاف محاولات الأونلاين بصمت — لا نُظهر أي رسالة علوية تزعج اللاعب
       try { this.net.stop(); } catch {}
     };
-    this.quality = 'high';
-    try { this.quality = localStorage.getItem('orkz_quality') || 'high'; } catch {}
+    // الجودة المتوسطة هي الافتراضي المتوازن: Canvas 2D يستهلك بكسلات كثيرة
+    // على الهاتف، ويمكن للاعب رفعها يدوياً من الإعدادات.
+    this.quality = 'medium';
+    try { this.quality = localStorage.getItem('orkz_quality') || 'medium'; } catch {}
     const defSettings = { sfx: 0.8, music: 0.45, sens: 1, tsens: 1, autofire: false, blood: true, touch: false, aimassist: true, vibrate: true, tapfire: false, view: 'fps' };
     try {
       const saved = JSON.parse(localStorage.getItem('orkz_settings') || '{}');
