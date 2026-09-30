@@ -77,6 +77,23 @@ for (const ref of new Set(localRefs)) {
     onDisk && (serverUp ? served === 200 : true), 'disk=' + onDisk + ' http=' + served);
 }
 
+/* وحدات shared/ يجب أن تكون داخل public/ لتُخدَم على أي استضافة ثابتة (Vercel وغيرها)
+   — هذا بالضبط ما كسر الموقع سابقاً: استيراد /shared/*.js بلا ملفات منشورة */
+console.log('\n🧩 ٢ب) وحدات المحاكاة (shared) منشورة داخل public');
+for (const mod of ['gamedata', 'sim', 'ai']) {
+  const ref = '/shared/' + mod + '.js';
+  const onDisk = fs.existsSync(path.join(ROOT, 'public', ref));
+  let served = null;
+  if (serverUp) {
+    try { served = (await fetch(BASE + ref)).status; } catch { served = 'ERR'; }
+  }
+  ok('الوحدة ' + ref + ' موجودة' + (serverUp ? ' وتُخدَم' : ' (قرص فقط)'),
+    onDisk && (serverUp ? served === 200 : true), 'disk=' + onDisk + ' http=' + served);
+}
+const jsImportsShared = ['main.js', 'game.js', 'render.js', 'render3d.js', 'ui.js']
+  .every(f => /from\s+['"]\/shared\//.test(read(path.join(ROOT, 'public/js', f))));
+ok('كل ملفات العميل تستورد /shared/* بمسار مطلق (يخدمها public على الاستضافة)', jsImportsShared);
+
 const fontsCss = read(path.join(ROOT, 'public/css/fonts.css'));
 const fontUrls = [...fontsCss.matchAll(/url\('(\/[^']+)'\)/g)].map(m => m[1]);
 ok('fonts.css يصرّح بملفات خطوط محلية', fontUrls.length >= 10, 'count=' + fontUrls.length);

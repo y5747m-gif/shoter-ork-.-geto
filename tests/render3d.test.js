@@ -34,9 +34,9 @@ globalThis.Path2D = NPath2D;
 globalThis.innerWidth = W; globalThis.innerHeight = H;
 globalThis.localStorage = { getItem: () => null, setItem() { }, removeItem() { } };
 
-const sim = await import(pathToFileURL(path.join(ROOT, 'shared', 'sim.js')).href);
-const ai = await import(pathToFileURL(path.join(ROOT, 'shared', 'ai.js')).href);
-const { ARMORS } = await import(pathToFileURL(path.join(ROOT, 'shared', 'gamedata.js')).href);
+const sim = await import(pathToFileURL(path.join(ROOT, 'public', 'shared', 'sim.js')).href);
+const ai = await import(pathToFileURL(path.join(ROOT, 'public', 'shared', 'ai.js')).href);
+const { ARMORS } = await import(pathToFileURL(path.join(ROOT, 'public', 'shared', 'gamedata.js')).href);
 const { Renderer } = await import(pathToFileURL(path.join(ROOT, 'public', 'js', 'render.js')).href);
 const R3 = await import(pathToFileURL(path.join(ROOT, 'public', 'js', 'render3d.js')).href);
 

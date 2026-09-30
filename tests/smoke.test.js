@@ -8,10 +8,10 @@ import assert from 'node:assert';
 import {
   createMatch, addPlayer, stepMatch, genWorld, dropPlayer, tryPickup, enterVehicle,
   revivePlayer, snapshot, dist,
-} from '../shared/sim.js';
-import { makeBotBrain, botThink, DIFFICULTY } from '../shared/ai.js';
-import * as gamedata from '../shared/gamedata.js';
-import { WEAPONS, CHARACTERS, SKINS, MAPS, MODES, ZONE_PHASES, LOOT_TABLE } from '../shared/gamedata.js';
+} from '../public/shared/sim.js';
+import { makeBotBrain, botThink, DIFFICULTY } from '../public/shared/ai.js';
+import * as gamedata from '../public/shared/gamedata.js';
+import { WEAPONS, CHARACTERS, SKINS, MAPS, MODES, ZONE_PHASES, LOOT_TABLE } from '../public/shared/gamedata.js';
 
 let passed = 0, failed = 0;
 function test(name, fn) {

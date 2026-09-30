@@ -173,6 +173,9 @@ check('عناصر الـ HUD تُحدَّث', $('hud-alive').textContent !== '50
 check('الميني ماب يعمل', !!s.renderer.miniStatic);
 check('العاصفة تتقدم', s.match.zone.timer < 120);
 // التقط غنيمة قريبة
+// ملاحظة استقرار: اللاعب الخامل قد يُقصى من البوتات خلال الإطارات السابقة (سلوك طبيعي)
+// — نحييه لحظياً لفحص آليتي الالتقاط والمهارة نفسيهما لا بقاؤه حياً
+if (!s.you.alive) { s.you.alive = true; s.you.knocked = false; s.you.hp = 100; s.you.bleed = 100; }
 const loot = s.match.loot.find(l => !l.taken && Math.hypot(l.x - s.you.x, l.y - s.you.y) < 2500);
 if (loot) {
   s.you.x = loot.x; s.you.y = loot.y;

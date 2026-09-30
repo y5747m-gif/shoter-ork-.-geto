@@ -28,6 +28,13 @@ class App {
     this.profile = null;
     this.ui = new UI(this);
     this.session = new Session(this);
+    // عند اكتشاف غياب السيرفر (استضافة ثابتة): وضع محلي كامل + إيقاف محاولات الأونلاين
+    API.onOffline = () => {
+      try { this.net.stop(); } catch {}
+      try {
+        this.ui.toast('📴 الوضع المحلي: لا يوجد سيرفر على هذا الرابط — اللعب الأوفلاين يعمل بالكامل وتقدّمك محفوظ على جهازك', 'ok');
+      } catch {}
+    };
     this.quality = 'high';
     try { this.quality = localStorage.getItem('orkz_quality') || 'high'; } catch {}
     const defSettings = { sfx: 0.8, music: 0.45, sens: 1, tsens: 1, autofire: false, blood: true, touch: false, aimassist: true, vibrate: true, tapfire: false, view: 'fps' };
@@ -437,7 +444,15 @@ class App {
   }
 
   /* ---------- بدء المباريات ---------- */
-  openPrivate() {
+  async openPrivate() {
+    // الغرف الخاصة تحتاج السيرفر الأونلاين — إن لم يوجد نوضح ذلك بدل شاشة ميتة
+    if (!this.net.connected && !API.offline) this.net.connect(this.token);
+    if (!this.net.connected && !API.offline) await this.waitConnected(1500);
+    if (!this.net.connected) {
+      this.ui.toast('🔒 غرف الأصدقاء تحتاج سيرفر اللعبة الأونلاين — غير متاح على هذا الرابط. جرّب اللعب الأوفلاين 📴', 'err');
+      this.ui.showMenu();
+      return;
+    }
     this.ui.hideAll();
     $('scr-room')?.classList.add('active');
     this.ui.toast('اختر النمط ثم أنشئ غرفة، أو أنشئ فوراً', 'ok');
@@ -458,7 +473,7 @@ class App {
       }
     } catch{}
   }
-  startSelected(again) {
+  async startSelected(again) {
     const mode = this._lastStart?.mode === 'offline' || !this.ui.onlineSelect ? 'offline' : 'online';
     const modeId = (again && this._lastStart?.modeId) || this.ui.selectedMode;
     const mapId = (again && this._lastStart?.mapId) || this.ui.selectedMap;
@@ -476,12 +491,37 @@ class App {
       this.audio.resume();
       this.session.startOffline({ mode: modeId, mapId, bots, difficulty: diff });
     } else {
-      if (!this.net.connected) this.net.connect(this.token);
+      // أونلاين: إن لم يكن السيرفر متاحاً هنا، ابدأ أوفلاين فوراً — اللعبة لا تتعطل أبداً
+      if (!this.net.connected && !API.offline) {
+        this.net.connect(this.token);
+        await this.waitConnected(1500);
+      }
+      if (!this.net.connected) {
+        $('scr-modes')?.classList.remove('active');
+        this.audio.resume();
+        const bots = +($('off-bots')?.value ?? 39);
+        const diff = $('off-diff')?.value || 'normal';
+        this.ui.toast('⚠️ السيرفر الأونلاين غير متاح على هذا الرابط — بدأنا لك مباراة أوفلاين بنفس النمط والخريطة', 'err');
+        this.session.startOffline({ mode: modeId, mapId, bots, difficulty: diff });
+        return;
+      }
       this.net.send({ t: 'queue', mode: modeId, mapId });
       $('scr-modes')?.classList.remove('active');
       this.ui.toast('🔎 جاري البحث عن مباراة... سيبدأ العد فوراً مع البوتات إن لم يتوفر لاعبون', 'ok');
       this.audio.resume();
     }
+  }
+  /** انتظر اتصال الأونلاين حتى المهلة — يفيد قبل إرسال طلبات الغرف */
+  waitConnected(ms = 1500) {
+    if (this.net.connected) return Promise.resolve(true);
+    return new Promise(resolve => {
+      let done = false;
+      const fin = (ok) => { if (!done) { done = true; resolve(ok); } };
+      const h = () => { this.net.handlers.open = this.net.handlers.open?.filter(f => f !== onOpen); fin(true); };
+      const onOpen = h;
+      this.net.on('open', onOpen);
+      setTimeout(() => { this.net.handlers.open = this.net.handlers.open?.filter(f => f !== onOpen); fin(this.net.connected); }, ms);
+    });
   }
 
   /* ---------- الحلقة ---------- */
