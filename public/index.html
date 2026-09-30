@@ -420,13 +420,62 @@
     </div>
   </div>
 
-  <!-- التحكم بالماوس: الهبوط -->
+  <!-- ===================== واجهة النزول (الهبوط بالمظلة) ===================== -->
   <div class="jump-phase hidden" id="jump-phase">
     <div class="jump-box glass">
-      <h3 class="title-gold">مرحلة الهبوط بالمظلة</h3>
-      <canvas id="dropmap" width="420" height="420"></canvas>
-      <p>اختر نقطة الهبوط بالنقر على الخريطة، أو اقفز الآن مع النزول التدريجي.</p>
-      <button class="btn-gold big" id="btn-jump">اقفز الآن 🪂</button>
+
+      <header class="jump-head">
+        <div class="jump-ttl">
+          <span class="jump-ic">🪂</span>
+          <div>
+            <h3 class="title-gold">اختر نزولك</h3>
+            <p class="jump-sub" id="jump-sub">انقر على الخريطة لتحديد نقطتك — أو اجعل النزول عشوائياً</p>
+          </div>
+        </div>
+        <div class="jump-clock" title="الوقت المتبقي قبل الإنزال التلقائي">
+          <b id="jump-count">60</b><span>ثانية</span>
+        </div>
+      </header>
+
+      <div class="jump-main">
+        <!-- الخريطة -->
+        <div class="jump-mapwrap">
+          <div class="jump-mapbox">
+            <canvas id="dropmap" width="480" height="480"></canvas>
+            <div class="jump-maphint" id="jump-maphint">المس الخريطة لاختيار نقطتك</div>
+          </div>
+        </div>
+
+        <!-- لوحة الخيارات -->
+        <div class="jump-side">
+          <div class="jump-modes" id="jump-modes" role="group" aria-label="نوع النزول">
+            <button class="jump-mode active" data-dropmode="manual">
+              <span class="jm-ic">🎯</span><b>اختياري</b><em>تحدد نقطتك بنفسك</em>
+            </button>
+            <button class="jump-mode" data-dropmode="random">
+              <span class="jm-ic">🎲</span><b>عشوائي</b><em>نقطة تُختار لك</em>
+            </button>
+            <button class="jump-mode" data-dropmode="hot">
+              <span class="jm-ic">🔥</span><b>منطقة ساخنة</b><em>غنائم أقوى · خطر أعلى</em>
+            </button>
+            <button class="jump-mode" data-dropmode="safe">
+              <span class="jm-ic">🛡️</span><b>هادئ</b><em>أطراف بعيدة عن الزحام</em>
+            </button>
+          </div>
+
+          <div class="jump-info" id="jump-info">
+            <div class="ji-row"><span>الوجهة</span><b id="ji-place">لم تُحدَّد بعد</b></div>
+            <div class="ji-row"><span>المسافة</span><b id="ji-dist">—</b></div>
+            <div class="ji-row"><span>الخطورة</span><b id="ji-risk">—</b></div>
+          </div>
+
+          <div class="jump-actions">
+            <button class="btn-ghost jump-reroll" id="btn-drop-random" title="اختر لي نقطة عشوائية">🎲 نقطة عشوائية</button>
+            <button class="btn-gold big" id="btn-jump">اقفز الآن 🪂</button>
+          </div>
+          <label class="jump-remember"><input type="checkbox" id="jump-remember" /> تذكّر اختياري للمباريات القادمة</label>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -499,6 +548,22 @@
   <div class="modal glass wide">
     <h2 class="title-gold">الإعدادات</h2>
     <div class="settings-grid">
+      <label>حجم الواجهة
+        <select id="set-uisize">
+          <option value="auto" selected>تلقائي — حسب جهازك</option>
+          <option value="phone">هاتف (مضغوط)</option>
+          <option value="tablet">جهاز لوحي</option>
+          <option value="desktop">كمبيوتر (واسع)</option>
+        </select>
+      </label>
+      <label>نوع النزول الافتراضي
+        <select id="set-dropmode">
+          <option value="manual" selected>اختياري — أحدد نقطتي</option>
+          <option value="random">عشوائي — نقطة تُختار لي</option>
+          <option value="hot">منطقة ساخنة 🔥</option>
+          <option value="safe">هادئ 🛡️</option>
+        </select>
+      </label>
       <label>صوت المؤثرات <input type="range" id="set-sfx" min="0" max="100" /></label>
       <label>الحساسية <input type="range" id="set-sens" min="20" max="300" /></label>
       <label>الجودة

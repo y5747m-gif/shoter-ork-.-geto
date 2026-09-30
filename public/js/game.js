@@ -51,6 +51,301 @@ export class Session {
     this.acc = 0;
     this.hudCache = {};
     this.dropMapReady = false;
+    /* ---------- 🪂 مرحلة النزول ---------- */
+    this.dropMode = 'manual';        // manual | random | hot | safe
+    this.dropRemain = 60;            // ثوانٍ قبل الإنزال التلقائي
+    this.dropRedrawT = 0;
+    this._dropBase = null;           // ذاكرة مؤقتة لرسم الخريطة الثابتة
+    this._dropBaseKey = '';
+    this.dropUIBound = false;
+  }
+
+  /* ============================= 🪂 مرحلة النزول ============================= */
+
+  /** العالم الحالي (أونلاين أو أوفلاين) */
+  dropWorld() { return this.online ? this.world : this.match?.world; }
+
+  /** بدء مرحلة النزول: صفر المؤقت، طبّق النمط المحفوظ، وجهّز الواجهة */
+  beginDropPhase() {
+    this.bindDropUI();
+    const saved = this.app?.settings?.dropMode;
+    this.dropMode = ['manual', 'random', 'hot', 'safe'].includes(saved) ? saved : 'manual';
+    this.dropRemain = this.online ? 62 : 62;
+    this.dropRedrawT = 0;
+    this._dropBase = null;
+    const rem = document.getElementById('jump-remember');
+    if (rem) rem.checked = !!this.app?.settings?.dropRemember;
+    this.syncDropModeButtons();
+    if (!this.dropPhase) { this.updateDropHud(); return; }
+    // النزول العشوائي/الساخن/الهادئ: تُختار النقطة فوراً — واللاعب يستطيع تغييرها
+    if (this.dropMode !== 'manual') this.dropPoint = this.pickDropPoint(this.dropMode);
+    else this.dropPoint = null;
+    this.drawDropMap(true);
+    this.updateDropHud();
+  }
+
+  /** تبديل نمط النزول (من الأزرار أو من الإعدادات) */
+  setDropMode(mode, fromUser = true) {
+    if (!['manual', 'random', 'hot', 'safe'].includes(mode)) mode = 'manual';
+    this.dropMode = mode;
+    this.syncDropModeButtons();
+    if (mode === 'manual') {
+      if (fromUser) this.dropPoint = this.dropPoint || null;
+    } else {
+      const p = this.pickDropPoint(mode);
+      if (p) this.dropPoint = p;
+    }
+    if (fromUser && this.app?.settings?.dropRemember) {
+      this.app.settings.dropMode = mode;
+      try { localStorage.setItem('orkz_settings', JSON.stringify(this.app.settings)); } catch { }
+    }
+    const sel = document.getElementById('set-dropmode');
+    if (sel) sel.value = mode;
+    this.drawDropMap();
+    this.updateDropHud();
+    try { this.audio.ui?.(); } catch { }
+  }
+
+  syncDropModeButtons() {
+    const wrap = document.getElementById('jump-modes');
+    if (!wrap) return;
+    for (const b of wrap.querySelectorAll('[data-dropmode]')) {
+      b.classList.toggle('active', b.dataset.dropmode === this.dropMode);
+    }
+    const hint = $('jump-maphint');
+    if (hint) {
+      const touch = !!this.input?.isTouch;
+      const verb = touch ? 'المس' : 'انقر على';
+      hint.textContent = (this.dropMode === 'manual'
+        ? `${verb} الخريطة لاختيار نقطتك`
+        : `نقطة مختارة تلقائياً — ${verb} الخريطة لتغييرها`)
+        + (touch ? '' : ' · مسافة = قفز · R = عشوائي');
+    }
+    const sub = $('jump-sub');
+    if (sub) {
+      sub.textContent = {
+        manual: 'انقر على الخريطة لتحديد نقطتك — أو اجعل النزول عشوائياً',
+        random: 'نزول عشوائي: تُختار لك نقطة في أي مكان على الخريطة',
+        hot: 'نزول ساخن: أقوى الغنائم… وأشرس الخصوم',
+        safe: 'نزول هادئ: أطراف الخريطة بعيداً عن المناطق الساخنة',
+      }[this.dropMode];
+    }
+  }
+
+  /** نقطة عشوائية صالحة داخل حدود الخريطة */
+  randomPointIn(world, pad = 220) {
+    for (let i = 0; i < 90; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.sqrt(Math.random()) * Math.max(80, world.half - pad);
+      const x = Math.cos(a) * r, y = Math.sin(a) * r;
+      if (world.shape.inside(x, y)) return { x, y };
+    }
+    return { x: 0, y: 0 };
+  }
+
+  /** اختيار نقطة نزول حسب النمط */
+  pickDropPoint(mode = this.dropMode) {
+    const world = this.dropWorld();
+    if (!world) return null;
+    if (mode === 'hot') {
+      const hot = world.hotDrops || [];
+      if (hot.length) {
+        const hd = hot[Math.floor(Math.random() * hot.length)];
+        for (let i = 0; i < 20; i++) {
+          const a = Math.random() * Math.PI * 2, r = Math.random() * hd.r * 0.7;
+          const x = hd.x + Math.cos(a) * r, y = hd.y + Math.sin(a) * r;
+          if (world.shape.inside(x, y)) return { x, y };
+        }
+        return { x: hd.x, y: hd.y };
+      }
+      // لا مناطق ساخنة: أقرب شيء = مركز الخريطة المزدحم
+      return this.randomPointIn(world, world.half * 0.6);
+    }
+    if (mode === 'safe') {
+      // أبعد نقطة عن كل المناطق الساخنة ضمن ٢٤ محاولة
+      let best = null, bestD = -1;
+      for (let i = 0; i < 24; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const rr = world.half * (0.58 + Math.random() * 0.3);
+        const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+        if (!world.shape.inside(x, y)) continue;
+        let d = 1e9;
+        for (const hd of (world.hotDrops || [])) d = Math.min(d, Math.hypot(x - hd.x, y - hd.y));
+        if (d > bestD) { bestD = d; best = { x, y }; }
+      }
+      return best || this.randomPointIn(world, 260);
+    }
+    // عشوائي تماماً
+    return this.randomPointIn(world, 200);
+  }
+
+  /** هل النقطة داخل منطقة ساخنة؟ */
+  isHotPoint(x, y) {
+    const world = this.dropWorld();
+    if (!world) return false;
+    return (world.hotDrops || []).some(hd => Math.hypot(x - hd.x, y - hd.y) <= hd.r);
+  }
+
+  /** اسم تقريبي للمنطقة (بوصلة عربية) */
+  dropPlaceName(x, y) {
+    const world = this.dropWorld();
+    if (!world) return '—';
+    const q = world.half * 0.3;
+    const ns = y < -q ? 'الشمال' : y > q ? 'الجنوب' : '';
+    const ew = x < -q ? 'الغرب' : x > q ? 'الشرق' : '';
+    let name;
+    if (!ns && !ew) name = 'وسط الخريطة';
+    else if (ns && ew) name = `${ns} ${ew === 'الشرق' ? 'الشرقي' : 'الغربي'}`;
+    else name = ns || ew;
+    return (this.isHotPoint(x, y) ? '🔥 ' : '') + name;
+  }
+
+  /** موقع الطائرة الحالي (أونلاين/أوفلاين) */
+  planePos() {
+    if (this.online) {
+      const pl = this.snapInfo?.plane;
+      return pl ? { x: pl.x, y: pl.y, a: pl.a || 0, done: !!pl.done } : null;
+    }
+    const pl = this.match?.plane;
+    return pl ? { x: pl.x, y: pl.y, a: pl.angle || 0, done: !!pl.done } : null;
+  }
+
+  /** تحديث بطاقة المعلومات + العدّاد */
+  updateDropHud() {
+    const cnt = $('jump-count');
+    if (cnt) {
+      const s = Math.max(0, Math.ceil(this.dropRemain));
+      if (cnt.textContent !== String(s)) cnt.textContent = String(s);
+      cnt.parentElement?.classList.toggle('urgent', s <= 10);
+    }
+    const place = $('ji-place'), dEl = $('ji-dist'), rEl = $('ji-risk');
+    const p = this.dropPoint;
+    if (place) place.textContent = p ? this.dropPlaceName(p.x, p.y) : 'لم تُحدَّد بعد';
+    if (dEl) {
+      const pl = this.planePos();
+      dEl.textContent = (p && pl) ? Math.round(Math.hypot(p.x - pl.x, p.y - pl.y)) + ' م' : '—';
+    }
+    if (rEl) {
+      rEl.className = '';
+      if (!p) { rEl.textContent = '—'; }
+      else if (this.isHotPoint(p.x, p.y)) { rEl.textContent = 'عالية 🔥'; rEl.className = 'hot'; }
+      else {
+        const world = this.dropWorld();
+        const far = world ? Math.hypot(p.x, p.y) / Math.max(1, world.half) : 0;
+        if (far > 0.62) { rEl.textContent = 'منخفضة 🛡️'; rEl.className = 'calm'; }
+        else { rEl.textContent = 'متوسطة'; rEl.className = 'mid'; }
+      }
+    }
+    const btn = $('btn-jump');
+    if (btn) btn.textContent = this.dropPoint ? 'اقفز الآن 🪂' : 'اقفز فوراً (نزول حر) 🪂';
+  }
+
+  /** نبضة مرحلة النزول: عدّاد تنازلي + تحديث الخريطة الحيّة */
+  tickDropPhase(dt) {
+    if (!this.dropPhase) return;
+    // الزمن المتبقي: من الطائرة أوفلاين، ومؤقت محلي أونلاين
+    if (!this.online && this.match?.plane) {
+      const pl = this.match.plane;
+      this.dropRemain = Math.max(0, (1.16 - pl.t) * (pl.duration || 55));
+    } else {
+      this.dropRemain = Math.max(0, this.dropRemain - dt);
+    }
+    this.dropRedrawT -= dt;
+    if (this.dropRedrawT <= 0) {
+      this.dropRedrawT = 0.12;
+      this.drawDropMap();
+      this.updateDropHud();
+    }
+    // انتهى الوقت: نزول تلقائي (عشوائي إن لم يختر اللاعب شيئاً)
+    if (this.dropRemain <= 0) {
+      const p = this.dropPoint || this.pickDropPoint('random') || { x: 0, y: 0 };
+      this.toastBig('🪂 إنزال تلقائي!');
+      this.doJump(p.x, p.y);
+    }
+  }
+
+  /** ربط عناصر واجهة النزول مرة واحدة */
+  bindDropUI() {
+    if (this.dropUIBound) return;
+    const cv = $('dropmap');
+    if (!cv) return;
+    this.dropUIBound = true;
+
+    const pointToWorld = (clientX, clientY) => {
+      const world = this.dropWorld();
+      if (!world) return null;
+      const r = cv.getBoundingClientRect();
+      if (!r.width || !r.height) return null;
+      const S = cv.width, k = (S * 0.92) / world.map.size, o = S / 2;
+      const x = ((clientX - r.left) / r.width * S - o) / k;
+      const y = ((clientY - r.top) / r.height * S - o) / k;
+      return { x, y };
+    };
+    const place = (clientX, clientY) => {
+      const world = this.dropWorld();
+      const pt = pointToWorld(clientX, clientY);
+      if (!world || !pt) return;
+      if (!world.shape.inside(pt.x, pt.y)) return;
+      this.dropPoint = pt;
+      if (this.dropMode !== 'manual') { this.dropMode = 'manual'; this.syncDropModeButtons(); }
+      this.drawDropMap();
+      this.updateDropHud();
+    };
+
+    // Pointer Events تغطي الماوس واللمس والقلم معاً — مع احتياط للمتصفحات القديمة
+    let dragging = false, usedPointer = false;
+    cv.addEventListener('pointerdown', (e) => {
+      usedPointer = true; dragging = true;
+      try { cv.setPointerCapture?.(e.pointerId); } catch { }
+      place(e.clientX, e.clientY);
+      e.preventDefault?.();
+    });
+    cv.addEventListener('pointermove', (e) => { if (dragging) { place(e.clientX, e.clientY); e.preventDefault?.(); } });
+    cv.addEventListener('pointerup', () => { dragging = false; });
+    cv.addEventListener('pointercancel', () => { dragging = false; });
+    cv.addEventListener('click', (e) => { if (!usedPointer) place(e.clientX, e.clientY); });
+    cv.addEventListener('touchstart', (e) => {
+      if (usedPointer) return;
+      const t = e.changedTouches && e.changedTouches[0];
+      if (t) { place(t.clientX, t.clientY); e.preventDefault?.(); }
+    }, { passive: false });
+
+    const modes = document.getElementById('jump-modes');
+    if (modes) modes.addEventListener('click', (e) => {
+      const b = e.target.closest?.('[data-dropmode]');
+      if (b) this.setDropMode(b.dataset.dropmode, true);
+    });
+    $('btn-drop-random')?.addEventListener('click', () => {
+      const p = this.pickDropPoint(this.dropMode === 'manual' ? 'random' : this.dropMode);
+      if (p) this.dropPoint = p;
+      if (this.dropMode === 'manual') { this.dropMode = 'random'; this.syncDropModeButtons(); }
+      this.drawDropMap();
+      this.updateDropHud();
+      try { this.audio.ui?.(); } catch { }
+    });
+    $('jump-remember')?.addEventListener('change', (e) => {
+      if (!this.app?.settings) return;
+      this.app.settings.dropRemember = !!e.target.checked;
+      if (e.target.checked) this.app.settings.dropMode = this.dropMode;
+      try { localStorage.setItem('orkz_settings', JSON.stringify(this.app.settings)); } catch { }
+    });
+    $('btn-jump')?.addEventListener('click', () => {
+      const p = this.dropPoint || this.pickDropPoint('random') || { x: 0, y: 0 };
+      this.doJump(p.x, p.y);
+    });
+    // اختصارات لوحة المفاتيح (الكمبيوتر): مسافة/إدخال = قفز · R = نقطة عشوائية
+    document.addEventListener('keydown', (e) => {
+      if (!this.dropPhase || !this.running) return;
+      const k = e.key;
+      if (k === ' ' || k === 'Enter') {
+        e.preventDefault();
+        const p = this.dropPoint || this.pickDropPoint('random') || { x: 0, y: 0 };
+        this.doJump(p.x, p.y);
+      } else if (k === 'r' || k === 'R' || k === 'ق') {
+        e.preventDefault();
+        $('btn-drop-random')?.click();
+      }
+    });
   }
 
   /* ============================= بدء الأوفلاين ============================= */
@@ -163,10 +458,16 @@ export class Session {
     $('hud-mode').textContent = (MODES.find(m => m.id === this.mode) || MODES[0]).ar;
     $('tdm-score').classList.toggle('hidden', this.mode !== 'tdm');
     $('pause').classList.add('hidden');
-    // أزرار اللمس: للجهاز اللمسي مع احترام اختيار اللاعب في الإعدادات
-    $('touch-ui')?.classList.toggle('hidden', !(this.input.isTouch && this.app?.settings?.touch !== false));
+    // أزرار اللمس: للجهاز اللمسي مع احترام اختيار اللاعب — وتُخفى أثناء نافذة النزول
+    this.syncTouchUI();
     this.updateLookHint();
-    this.drawDropMap();
+    this.beginDropPhase();
+  }
+
+  /** إظهار/إخفاء أزرار اللمس (تُخفى أثناء نافذة اختيار النزول) */
+  syncTouchUI() {
+    const want = this.input.isTouch && this.app?.settings?.touch !== false && !this.dropPhase;
+    $('touch-ui')?.classList.toggle('hidden', !want);
   }
 
   /** مسافة حدث عن اللاعب (لمحاكاة بُعد الصوت) — ٠ إن تعذّر الحساب */
@@ -191,6 +492,7 @@ export class Session {
     const actions = this.input.drainActions();
     this.applyAimAssist(dt);
     if (this.online) this.updateOnline(dt, actions); else this.updateOffline(dt, actions);
+    if (this.dropPhase) this.tickDropPhase(dt);
     this.render(dt);
     this.updateHud();
   }
@@ -556,6 +858,7 @@ export class Session {
     }
     this.dropPhase = false;
     $('jump-phase')?.classList.add('hidden');
+    this.syncTouchUI();
     this.audio.jump();
   }
 
@@ -782,7 +1085,7 @@ export class Session {
     if (!this.input.keys.has('Tab') && !this.input.sbOpen) $('scoreboard').classList.add('hidden');
     else this.showScoreboard();
     // أزرار اللمس: للجهاز اللمسي مع احترام اختيار اللاعب في الإعدادات
-    $('touch-ui')?.classList.toggle('hidden', !(this.input.isTouch && this.app?.settings?.touch !== false));
+    this.syncTouchUI();
   }
   drawCompass(me) {
     if (!me) return;
@@ -839,48 +1142,105 @@ export class Session {
     if (this.renderer.is3D && !this.input.locked) this.input.requestLock();
   }
 
-  /* ---------- خريطة القفز ---------- */
-  drawDropMap() {
-    const cv = $('dropmap');
-    if (!cv) return;
-    const world = this.online ? this.world : this.match?.world;
-    if (!world) return;
-    const ctx = cv.getContext('2d');
-    const S = cv.width, k = (S * 0.92) / world.map.size, ox = S / 2, oy = S / 2;
-    const W = (x) => ox + x * k, H = (y) => oy + y * k;
+  /* ---------- 🗺️ خريطة النزول ----------
+     الطبقة الثابتة (الأرض/الطرق/المباني/المناطق الساخنة) تُرسم مرة واحدة في
+     لوحة مخفية ثم تُنسخ كل إطار، وفوقها الطبقة الحيّة: مسار الطائرة، موقعها
+     الحالي، ونقطة النزول المختارة. هذا يبقي الواجهة سلسة على الهواتف. */
+  buildDropBase(world, S) {
+    const key = `${world.mapId}:${world.seed}:${S}`;
+    if (this._dropBase && this._dropBaseKey === key) return this._dropBase;
+    let base;
+    try { base = document.createElement('canvas'); } catch { return null; }
+    base.width = S; base.height = S;
+    const ctx = base.getContext('2d');
+    if (!ctx) return null;
+    const k = (S * 0.92) / world.map.size, o = S / 2;
+    const W = (x) => o + x * k, H = (y) => o + y * k;
     const biome = world.biome;
+    const ring = () => {
+      ctx.beginPath();
+      for (let i = 0; i <= 128; i++) { const a = (i / 128) * Math.PI * 2, r = world.shape.radius(a); ctx.lineTo(W(Math.cos(a) * r), H(Math.sin(a) * r)); }
+      ctx.closePath();
+    };
     ctx.fillStyle = '#08111a'; ctx.fillRect(0, 0, S, S);
     ctx.save();
-    ctx.beginPath();
-    for (let i = 0; i <= 128; i++) { const a = (i / 128) * Math.PI * 2, r = world.shape.radius(a); ctx.lineTo(W(Math.cos(a) * r), H(Math.sin(a) * r)); }
-    ctx.closePath(); ctx.fillStyle = biome.ground; ctx.fill(); ctx.clip();
+    ring(); ctx.fillStyle = biome.ground; ctx.fill(); ctx.clip();
     for (const d of world.decals) {
       if (d.kind === 'road') { ctx.strokeStyle = biome.road; ctx.lineWidth = Math.max(2, d.width * k); ctx.beginPath(); ctx.moveTo(W(d.x1), H(d.y1)); ctx.lineTo(W(d.x2), H(d.y2)); ctx.stroke(); }
       else if (d.kind === 'water') { ctx.fillStyle = biome.water; ctx.fillRect(W(d.x - d.w / 2), H(d.y - d.h / 2), d.w * k, d.h * k); }
       else if (d.kind === 'building') { ctx.fillStyle = 'rgba(20,14,10,.8)'; ctx.fillRect(W(d.x - d.w / 2), H(d.y - d.h / 2), Math.max(2, d.w * k), Math.max(2, d.h * k)); }
     }
-    // مناطق ساخنة
-    ctx.fillStyle = 'rgba(255,70,70,.22)';
-    for (const hd of world.hotDrops) { ctx.beginPath(); ctx.arc(W(hd.x), H(hd.y), hd.r * k, 0, 6.283); ctx.fill(); }
-    ctx.restore();
-    ctx.strokeStyle = 'rgba(255,198,61,.6)'; ctx.lineWidth = 2;
-    ctx.beginPath();
-    for (let i = 0; i <= 128; i++) { const a = (i / 128) * Math.PI * 2, r = world.shape.radius(a); ctx.lineTo(W(Math.cos(a) * r), H(Math.sin(a) * r)); }
-    ctx.closePath(); ctx.stroke();
-    if (this.dropPoint) {
-      ctx.strokeStyle = '#ffc63d'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(W(this.dropPoint.x), H(this.dropPoint.y), 12, 0, 6.283); ctx.stroke();
-      ctx.fillStyle = '#ffc63d'; ctx.beginPath(); ctx.arc(W(this.dropPoint.x), H(this.dropPoint.y), 5, 0, 6.283); ctx.fill();
+    // المناطق الساخنة (غنائم أقوى)
+    for (const hd of (world.hotDrops || [])) {
+      ctx.fillStyle = 'rgba(255,70,70,.2)';
+      ctx.beginPath(); ctx.arc(W(hd.x), H(hd.y), hd.r * k, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,90,90,.5)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(W(hd.x), H(hd.y), hd.r * k, 0, 6.283); ctx.stroke();
     }
-    if (!this.dropMapBound) {
-      this.dropMapBound = true;
-      cv.addEventListener('click', (e) => {
-        const r = cv.getBoundingClientRect();
-        const x = ((e.clientX - r.left) / r.width * cv.width - ox) / k;
-        const y = ((e.clientY - r.top) / r.height * cv.height - oy) / k;
-        if (world.shape.inside(x, y)) { this.dropPoint = { x, y }; this.drawDropMap(); }
-      });
-      $('btn-jump').addEventListener('click', () => this.doJump(this.dropPoint?.x ?? 0, this.dropPoint?.y ?? 0));
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(255,198,61,.6)'; ctx.lineWidth = 2; ring(); ctx.stroke();
+    this._dropBase = base; this._dropBaseKey = key;
+    return base;
+  }
+
+  drawDropMap(force = false) {
+    const cv = $('dropmap');
+    if (!cv) return;
+    const world = this.dropWorld();
+    if (!world) return;
+    const ctx = cv.getContext('2d');
+    if (!ctx) return;
+    const S = cv.width, k = (S * 0.92) / world.map.size, o = S / 2;
+    const W = (x) => o + x * k, H = (y) => o + y * k;
+    if (force) { this._dropBase = null; this._dropBaseKey = ''; }
+    const base = this.buildDropBase(world, S);
+    ctx.clearRect(0, 0, S, S);
+    if (base) { try { ctx.drawImage(base, 0, 0); } catch { } }
+
+    // مسار الطائرة + موقعها الحالي
+    const pl = this.online ? this.snapInfo?.plane : this.match?.plane;
+    if (pl) {
+      if (!this.online && Number.isFinite(pl.ax)) {
+        ctx.save();
+        ctx.setLineDash([7, 7]); ctx.strokeStyle = 'rgba(255,255,255,.34)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(W(pl.ax), H(pl.ay)); ctx.lineTo(W(pl.bx), H(pl.by)); ctx.stroke();
+        ctx.restore();
+      }
+      if (Number.isFinite(pl.x) && !pl.done) {
+        const px = W(pl.x), py = H(pl.y);
+        ctx.save();
+        ctx.translate(px, py); ctx.rotate((this.online ? pl.a : pl.angle) || 0);
+        ctx.fillStyle = '#eaf3ff';
+        ctx.beginPath();
+        ctx.moveTo(11, 0); ctx.lineTo(-7, 7); ctx.lineTo(-3, 0); ctx.lineTo(-7, -7);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+        // خط الاقتراب من نقطة النزول
+        if (this.dropPoint) {
+          ctx.save();
+          ctx.setLineDash([4, 6]); ctx.strokeStyle = 'rgba(255,198,61,.55)'; ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(W(this.dropPoint.x), H(this.dropPoint.y)); ctx.stroke();
+          ctx.restore();
+        }
+      }
+    }
+
+    // نقطة النزول المختارة — علامة نابضة واضحة على الهاتف
+    if (this.dropPoint) {
+      const x = W(this.dropPoint.x), y = H(this.dropPoint.y);
+      const t = (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+      const pulse = 12 + Math.sin(t * 4) * 3;
+      ctx.strokeStyle = 'rgba(255,198,61,.45)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, pulse + 8, 0, 6.283); ctx.stroke();
+      ctx.strokeStyle = '#ffc63d'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(x, y, pulse, 0, 6.283); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - pulse - 7, y); ctx.lineTo(x - pulse + 2, y);
+      ctx.moveTo(x + pulse - 2, y); ctx.lineTo(x + pulse + 7, y);
+      ctx.moveTo(x, y - pulse - 7); ctx.lineTo(x, y - pulse + 2);
+      ctx.moveTo(x, y + pulse - 2); ctx.lineTo(x, y + pulse + 7);
+      ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = '#ffc63d';
+      ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 6.283); ctx.fill();
     }
   }
 
@@ -907,7 +1267,7 @@ export class Session {
       if (this.renderer.r3) this.renderer.r3.cam.yaw = me.a || 0;
     }
     if (me && me.st !== 'plane' && me.st !== 'wait') {
-      if (this.dropPhase) { this.dropPhase = false; }
+      if (this.dropPhase) { this.dropPhase = false; this.syncTouchUI(); }
     }
     $('jump-phase').classList.toggle('hidden', !this.dropPhase);
   }

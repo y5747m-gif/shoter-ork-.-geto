@@ -46,7 +46,7 @@ class App {
     this.deviceTier = 'medium';   // درجة جهاز المستخدم المكتشفة
     this.autoTier = null;         // الدرجة الحالية للوضع التلقائي (تتغيّر مع الأداء)
     this.perf = { fps: 60, lowT: 0, highT: 0, cooldown: 0, showT: 0 };
-    const defSettings = { sfx: 0.8, sens: 1, tsens: 1, autofire: false, blood: true, touch: false, aimassist: true, vibrate: true, tapfire: false, view: 'fps' };
+    const defSettings = { sfx: 0.8, sens: 1, tsens: 1, autofire: false, blood: true, touch: false, aimassist: true, vibrate: true, tapfire: false, view: 'fps', uiMode: 'auto', dropMode: 'manual', dropRemember: false };
     try {
       const saved = JSON.parse(localStorage.getItem('orkz_settings') || '{}');
       this.settings = { ...defSettings, ...saved };
@@ -77,8 +77,54 @@ class App {
       }
       document.documentElement.classList.toggle('is-touch', !!isMobile);
       document.documentElement.classList.toggle('is-desktop', !isMobile);
+      this.applyUiMode();
       return isMobile;
-    } catch { this.isMobile = false; return false; }
+    } catch { this.isMobile = false; try { this.applyUiMode(); } catch {} return false; }
+  }
+
+  /**
+   * 📐 مقاس الواجهة حسب الجهاز.
+   * يضبط السمة data-ui على <html> (phone | tablet | desktop) والمتغيرات
+   * --ui-scale و --app-h، فتتكيّف كل نوافذ اللعبة تلقائياً.
+   * اللاعب يستطيع فرض المقاس من الإعدادات (تلقائي / هاتف / لوحي / كمبيوتر).
+   */
+  detectUiMode() {
+    const pref = (this.settings && this.settings.uiMode) || 'auto';
+    if (pref === 'phone' || pref === 'tablet' || pref === 'desktop') return pref;
+    const w = window.innerWidth || 1024, h = window.innerHeight || 768;
+    const shortSide = Math.min(w, h), longSide = Math.max(w, h);
+    if (!this.isMobile) {
+      // كمبيوتر: نافذة صغيرة جداً تُعامل كجهاز لوحي حتى تبقى النوافذ داخل الشاشة
+      if (longSide < 900 || h < 560) return 'tablet';
+      return 'desktop';
+    }
+    // جهاز لمسي: الفاصل بين الهاتف والجهاز اللوحي بالضلع الأقصر
+    if (shortSide >= 600 && longSide >= 960) return 'tablet';
+    return 'phone';
+  }
+
+  applyUiMode() {
+    try {
+      const root = document.documentElement;
+      const mode = this.detectUiMode();
+      this.uiMode = mode;
+      root.setAttribute('data-ui', mode);
+      root.classList.toggle('ui-phone', mode === 'phone');
+      root.classList.toggle('ui-tablet', mode === 'tablet');
+      root.classList.toggle('ui-desktop', mode === 'desktop');
+      // الارتفاع الحقيقي للنافذة (يتفادى شريط عنوان المتصفح على الهواتف)
+      const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) || window.innerHeight || 720;
+      root.style.setProperty('--app-h', Math.round(vh) + 'px');
+      // معامل تصغير إضافي للشاشات القصيرة جداً حتى لا تخرج أي نافذة عن الشاشة
+      let scale = mode === 'phone' ? 0.88 : mode === 'tablet' ? 0.95 : 1;
+      if (vh < 420) scale *= 0.92;
+      if (vh < 340) scale *= 0.92;
+      scale = Math.max(0.7, Math.min(1.15, scale));
+      root.style.setProperty('--ui-scale', scale.toFixed(3));
+      const sel = document.getElementById('set-uisize');
+      if (sel) sel.value = (this.settings && this.settings.uiMode) || 'auto';
+      return mode;
+    } catch { return 'desktop'; }
   }
 
   /** تقدير قوة الجهاز → درجة جودة ابتدائية للوضع «تلقائي» (ضعيف/متوسط/قوي) */
@@ -415,6 +461,21 @@ class App {
       }
       this.applyQuality();
     };
+    // 📐 مقاس الواجهة (تلقائي / هاتف / لوحي / كمبيوتر)
+    const uiEl = $('set-uisize');
+    if (uiEl) uiEl.onchange = (e) => {
+      this.settings.uiMode = e.target.value || 'auto';
+      const m = this.applyUiMode();
+      try { this.session.renderer.resize(); } catch { }
+      try { this.session.drawDropMap(true); } catch { }
+      this.ui.toast('📐 مقاس الواجهة: ' + ({ phone: 'هاتف', tablet: 'جهاز لوحي', desktop: 'كمبيوتر' }[m] || m), 'ok');
+    };
+    // 🪂 نوع النزول الافتراضي
+    const dmEl = $('set-dropmode');
+    if (dmEl) dmEl.onchange = (e) => {
+      this.settings.dropMode = e.target.value || 'manual';
+      try { this.session.setDropMode(this.settings.dropMode, false); } catch { }
+    };
     const tsEl = $('set-tsens');
     if (tsEl) tsEl.oninput = (e) => { this.settings.tsens = +e.target.value / 100; if (this.session?.input) this.session.input.touchLookSens = this.settings.tsens; };
     const aaEl = $('set-aimassist');
@@ -456,6 +517,9 @@ class App {
     if ($('set-tapfire')) $('set-tapfire').checked = !!this.settings.tapfire;
     if ($('set-touch')) $('set-touch').checked = !!this.settings.touch;
     if ($('set-blood')) $('set-blood').checked = this.settings.blood !== false;
+    if ($('set-uisize')) $('set-uisize').value = this.settings.uiMode || 'auto';
+    if ($('set-dropmode')) $('set-dropmode').value = this.settings.dropMode || 'manual';
+    try { this.applyUiMode(); } catch { }
     if (this.session?.input) {
       this.session.input.autoFire = !!this.settings.autofire;
       this.session.input.sens = this.settings.sens ?? 1;

@@ -8,6 +8,15 @@
   --line:rgba(255,198,61,.22); --txt:#e8eef7; --dim:#9aa8ba;
   --hp:#41e06a; --sh:#3ea6ff; --bo:#ffd23d; --danger:#ff4757;
   --r:14px; --sh-lg:0 18px 50px rgba(0,0,0,.6);
+  /* ===== مقاسات الواجهة — تتبدل حسب الجهاز (data-ui على <html>) ===== */
+  --ui-scale:1;              /* معامل عام يضبطه main.js حسب الجهاز/الشاشة */
+  --app-h:100dvh;            /* ارتفاع نافذة حقيقي (يضبطه JS لتفادي شريط المتصفح) */
+  --win-pad:20px;            /* حشوة داخل النوافذ */
+  --win-gap:12px;            /* المسافة بين عناصر النافذة */
+  --win-max-h:92dvh;         /* أقصى ارتفاع لأي نافذة */
+  --win-r:16px;              /* استدارة النوافذ */
+  --win-ttl:26px;            /* حجم عنوان النافذة */
+  --win-txt:14.5px;          /* حجم نص النافذة */
   /* الخطوط مضمّنة محلياً (fonts.css) — والبدائل الآمنة تعمل لو لم يتوفر أي منها */
   --font:'Cairo','Noto Sans Arabic','Noto Kufi Arabic','Segoe UI',system-ui,Tahoma,'Arial Unicode MS',sans-serif;
   --display:'Orbitron','Cairo','Segoe UI',system-ui,sans-serif;
@@ -192,10 +201,21 @@ input:focus,select:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(255,
 .friend .dot{width:9px;height:9px;border-radius:50%;background:#41e06a;box-shadow:0 0 10px #41e06a}
 
 /* ---------- النوافذ ---------- */
-.modal{width:min(680px,95vw);padding:24px;position:relative;z-index:8;animation:pop .3s ease}
-.modal.wide{width:min(1080px,96vw);max-height:92vh;overflow:auto}
+.modal{
+  width:min(680px,95vw);max-height:var(--win-max-h);overflow:auto;
+  padding:var(--win-pad);border-radius:var(--win-r);
+  position:relative;z-index:8;animation:pop .3s ease;font-size:var(--win-txt);
+  -webkit-overflow-scrolling:touch;
+}
+.modal.wide{width:min(1080px,96vw)}
+.modal h2,.modal .win-title{font-size:var(--win-ttl);line-height:1.25}
+.modal h3{font-size:calc(var(--win-txt) + 2px)}
 @keyframes pop{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
-.modal-wrap{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:rgba(0,0,0,.72);backdrop-filter:blur(4px)}
+.modal-wrap{
+  position:fixed;inset:0;z-index:40;display:grid;place-items:center;
+  background:rgba(0,0,0,.72);backdrop-filter:blur(4px);overflow:auto;
+  padding:max(8px,env(safe-area-inset-top,0)) max(8px,env(safe-area-inset-right,0)) max(8px,env(safe-area-inset-bottom,0)) max(8px,env(safe-area-inset-left,0));
+}
 .code-box{background:rgba(0,0,0,.5);border:1px dashed var(--gold);border-radius:12px;padding:10px 18px;font-weight:900;font-size:19px;color:var(--gold);letter-spacing:2px}
 .room-players{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;margin:16px 0}
 .rp{display:flex;align-items:center;gap:10px;padding:11px;border-radius:12px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);font-weight:800}
@@ -306,10 +326,116 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .big-msg{position:absolute;top:38%;inset-inline-start:50%;transform:translateX(-50%);font-weight:900;font-size:clamp(24px,4.4vw,44px);color:var(--gold);text-shadow:0 4px 20px rgba(0,0,0,.9);pointer-events:none;opacity:0;transition:.3s;text-align:center}
 .big-msg.on{opacity:1}
 
-.jump-phase{position:absolute;inset:0;display:grid;place-items:center;background:rgba(4,7,11,.75);backdrop-filter:blur(3px);z-index:6}
-.jump-box{padding:18px;text-align:center;max-width:min(560px,94vw)}
-#dropmap{width:min(420px,84vw);height:auto;border-radius:12px;border:1px solid var(--line);background:#0a1016;cursor:crosshair}
-.jump-box p{color:var(--dim);font-size:13.5px}
+/* ======================= 🪂 واجهة النزول (الهبوط) ======================= */
+.jump-phase{
+  position:absolute;inset:0;z-index:6;display:grid;place-items:center;
+  background:radial-gradient(1100px 620px at 50% 0%,rgba(10,20,33,.82),rgba(3,6,10,.92));
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  padding:max(8px,env(safe-area-inset-top,0)) max(8px,env(safe-area-inset-right,0)) max(8px,env(safe-area-inset-bottom,0)) max(8px,env(safe-area-inset-left,0));
+  overflow:auto;
+}
+.jump-box{
+  width:min(960px,96vw);max-height:var(--win-max-h);overflow:auto;
+  padding:var(--win-pad);border-radius:var(--win-r);
+  display:flex;flex-direction:column;gap:var(--win-gap);text-align:start;
+}
+/* رأس النافذة */
+.jump-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.jump-ttl{display:flex;align-items:center;gap:10px;min-width:0}
+.jump-ic{font-size:calc(30px * var(--ui-scale));line-height:1;filter:drop-shadow(0 4px 12px rgba(255,198,61,.45))}
+.jump-head h3{margin:0;font-size:var(--win-ttl);line-height:1.2}
+.jump-sub{margin:2px 0 0;color:var(--dim);font-size:calc(var(--win-txt) - 1.5px);line-height:1.45}
+.jump-clock{
+  display:flex;align-items:baseline;gap:6px;padding:6px 14px;border-radius:999px;
+  background:rgba(255,198,61,.1);border:1px solid var(--line);flex:0 0 auto;
+}
+.jump-clock b{font-family:var(--display);font-size:calc(24px * var(--ui-scale));color:var(--gold);line-height:1}
+.jump-clock span{font-size:11px;color:var(--dim)}
+.jump-clock.urgent{background:rgba(255,71,87,.16);border-color:rgba(255,71,87,.55);animation:jpPulse .9s ease-in-out infinite}
+.jump-clock.urgent b{color:#ff8a94}
+@keyframes jpPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+
+/* الجسم: خريطة + لوحة خيارات */
+.jump-main{display:grid;grid-template-columns:minmax(0,1fr) minmax(200px,290px);gap:var(--win-gap);align-items:stretch;min-height:0}
+.jump-mapwrap{display:grid;place-items:center;min-width:0}
+.jump-mapbox{position:relative;display:block;max-width:100%}
+#dropmap{
+  display:block;width:auto;height:min(52dvh,400px);max-width:100%;aspect-ratio:1/1;
+  border-radius:14px;border:1px solid var(--line);background:#0a1016;cursor:crosshair;
+  box-shadow:inset 0 0 40px rgba(0,0,0,.6),0 10px 30px rgba(0,0,0,.45);touch-action:none;
+}
+.jump-maphint{
+  position:absolute;bottom:8px;inset-inline-start:50%;transform:translateX(-50%);
+  font-size:11.5px;font-weight:700;color:#cfe0f2;background:rgba(4,8,13,.72);
+  border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:4px 12px;
+  pointer-events:none;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* لوحة الخيارات */
+.jump-side{display:flex;flex-direction:column;gap:8px;min-width:0}
+.jump-modes{display:grid;grid-template-columns:1fr;gap:6px}
+.jump-mode{
+  display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;gap:0 9px;
+  align-items:center;text-align:start;padding:8px 11px;border-radius:12px;
+  background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.1);transition:.15s;
+}
+.jump-mode .jm-ic{grid-row:1/3;font-size:calc(21px * var(--ui-scale));line-height:1}
+.jump-mode b{font-size:calc(var(--win-txt) - .5px);font-weight:900;color:var(--txt)}
+.jump-mode em{font-style:normal;font-size:11px;color:var(--dim);line-height:1.3}
+.jump-mode:hover{background:rgba(255,255,255,.09);border-color:var(--line)}
+.jump-mode.active{background:linear-gradient(90deg,rgba(255,198,61,.22),rgba(255,198,61,.04));border-color:var(--gold);box-shadow:0 0 18px rgba(255,198,61,.18)}
+.jump-mode.active b{color:var(--gold)}
+
+.jump-info{display:flex;flex-direction:column;gap:3px;padding:8px 11px;border-radius:12px;background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.08)}
+.ji-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px}
+.ji-row span{color:var(--dim)}
+.ji-row b{font-weight:800;color:var(--txt);text-align:end;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ji-row b.hot{color:#ff7a7a}.ji-row b.calm{color:#8fe8a5}.ji-row b.mid{color:var(--gold)}
+
+.jump-actions{display:grid;grid-template-columns:1fr;gap:7px;margin-top:auto}
+.jump-actions .btn-gold.big{width:100%;font-size:calc(17px * var(--ui-scale));padding:12px 16px}
+.jump-actions .jump-reroll{width:100%;padding:9px 14px;font-size:13.5px}
+.jump-remember{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--dim);font-weight:700}
+.jump-remember input{width:16px;height:16px;accent-color:var(--gold)}
+
+/* — هواتف أفقية قصيرة: ضغط كل شيء ليبقى داخل الشاشة بلا تمرير — */
+@media (max-height:470px) and (orientation:landscape){
+  .jump-box{width:min(100%,900px);gap:7px;padding:9px 11px}
+  .jump-head h3{font-size:16px}
+  .jump-sub{display:none}
+  .jump-ic{font-size:22px}
+  .jump-clock{padding:3px 10px}
+  .jump-clock b{font-size:17px}
+  #dropmap{height:min(60dvh,240px)}
+  .jump-main{gap:9px;grid-template-columns:minmax(0,1fr) minmax(178px,240px)}
+  .jump-modes{grid-template-columns:1fr 1fr;gap:5px}
+  .jump-mode{padding:5px 7px;grid-template-rows:auto;gap:0 6px;align-items:center}
+  .jump-mode .jm-ic{grid-row:1;font-size:16px}
+  .jump-mode b{font-size:11.5px}
+  .jump-mode em{display:none}
+  .jump-info{padding:5px 8px;gap:1px}
+  .ji-row{font-size:11px}
+  .jump-actions{gap:5px}
+  .jump-actions .btn-gold.big{font-size:14px;padding:9px 12px}
+  .jump-actions .jump-reroll{padding:7px 10px;font-size:12px}
+  .jump-remember{font-size:10px}
+  .jump-maphint{font-size:10px;padding:3px 9px;bottom:5px}
+}
+@media (max-height:360px) and (orientation:landscape){
+  #dropmap{height:min(64dvh,192px)}
+  .jump-remember{display:none}
+  .jump-info .ji-row:nth-child(3){display:none}
+}
+/* — شاشات ضيقة جداً: عمود واحد — */
+@media (max-width:620px) and (orientation:portrait){
+  .jump-main{grid-template-columns:1fr}
+  .jump-modes{grid-template-columns:1fr 1fr}
+  #dropmap{width:100%;height:auto}
+}
+/* — أجهزة اللمس: مناطق ضغط مريحة — */
+@media (hover:none) and (pointer:coarse){
+  .jump-mode{min-height:42px}
+}
 .scoreboard{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.6);z-index:7}
 .sb-inner{width:min(720px,94vw);max-height:80vh;overflow:auto;padding:18px}
 .sb-inner h3{margin:0 0 10px;color:var(--gold)}
@@ -434,6 +560,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .rotate-card{
   background:rgba(16,22,31,.92); border:1px solid rgba(255,198,61,.28); border-radius:20px;
   padding:28px 24px; max-width:420px; width:94vw;
+  max-height:calc(var(--app-h,100dvh) - 34px); overflow:auto; -webkit-overflow-scrolling:touch;
   box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 40px rgba(255,198,61,.12);
   animation:pop .4s ease;
 }
@@ -476,6 +603,61 @@ body{
 }
 /* تحسين التمرير للقوائم على كل الشاشات */
 .menu-main, .modal.wide, .sb-inner{ -webkit-overflow-scrolling:touch; scrollbar-width:thin; }
+
+/* ==========================================================================
+   📐 مقاس النوافذ حسب الجهاز — يضبط main.js السمة data-ui على <html>
+   phone / tablet / desktop  (تلقائي أو اختيار اللاعب من الإعدادات)
+   كل «نافذة» في اللعبة تأخذ مقاسها من هذه المتغيرات، فلا تخرج عن الشاشة أبداً.
+   ========================================================================== */
+html[data-ui="desktop"]{ --win-pad:24px; --win-gap:14px; --win-ttl:28px; --win-txt:15px;  --win-max-h:92dvh; --win-r:16px; }
+html[data-ui="tablet"]{ --win-pad:18px; --win-gap:12px; --win-ttl:24px; --win-txt:14.5px;--win-max-h:94dvh; --win-r:15px; }
+html[data-ui="phone"]{ --win-pad:12px; --win-gap:9px;  --win-ttl:19px; --win-txt:13px;  --win-max-h:96dvh; --win-r:13px; }
+
+/* أي نافذة/بطاقة كاملة داخل شاشة: لا تتجاوز الشاشة، وتُمرَّر داخلياً */
+.screen > .modal,
+.screen > .auth-card,
+.screen > .load-wrap{
+  max-height:calc(var(--app-h,100dvh) - 2 * var(--win-pad));
+  overflow:auto;-webkit-overflow-scrolling:touch;
+}
+.auth-card{ width:min(440px,94vw); padding:var(--win-pad); border-radius:var(--win-r); font-size:var(--win-txt); }
+.sb-inner{ padding:var(--win-pad); border-radius:var(--win-r); max-height:var(--win-max-h); font-size:var(--win-txt); }
+.pause .modal{ width:min(420px,92vw); }
+.prayer-lock .prayer-box{ padding:var(--win-pad); border-radius:var(--win-r); max-height:var(--win-max-h); overflow:auto; }
+
+/* هاتف: تصغير العناصر الداخلية للنوافذ حتى تسع الشاشة الصغيرة */
+html[data-ui="phone"] .btn-gold{ padding:10px 16px; font-size:14px; }
+html[data-ui="phone"] .btn-gold.big{ padding:11px 18px; font-size:15.5px; }
+html[data-ui="phone"] .btn-ghost{ padding:10px 14px; font-size:14px; }
+html[data-ui="phone"] .btn-ghost.big{ padding:11px 16px; font-size:15px; }
+html[data-ui="phone"] .icon-btn{ width:36px; height:36px; font-size:16px; }
+html[data-ui="phone"] .tab{ padding:7px 12px; font-size:12.5px; }
+html[data-ui="phone"] .settings-grid{ grid-template-columns:1fr 1fr; gap:8px; }
+html[data-ui="phone"] .settings-grid label{ font-size:12.5px; gap:5px; }
+html[data-ui="phone"] .settings-grid input[type=checkbox]{ width:17px; height:17px; }
+html[data-ui="phone"] .mode-grid{ grid-template-columns:repeat(auto-fit,minmax(118px,1fr)); gap:7px; }
+html[data-ui="phone"] .mode-card{ padding:9px; }
+html[data-ui="phone"] .mode-card .ic{ font-size:22px; }
+html[data-ui="phone"] .mode-card b{ font-size:14px; margin:2px 0; }
+html[data-ui="phone"] .mode-card span{ font-size:10.5px; }
+html[data-ui="phone"] .map-grid{ grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:8px; }
+html[data-ui="phone"] .map-card b{ font-size:13px; }
+html[data-ui="phone"] .map-card span{ font-size:10.5px; }
+html[data-ui="phone"] .sub{ margin:9px 0 5px; font-size:13.5px; }
+html[data-ui="phone"] .hint{ font-size:11.5px; }
+html[data-ui="phone"] .room-players{ grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:7px; }
+html[data-ui="phone"] .chat-log{ height:74px; font-size:12px; }
+html[data-ui="phone"] .countdown{ font-size:24px; }
+html[data-ui="phone"] .res-grid{ gap:8px; }
+html[data-ui="phone"] .side-btn{ padding:9px 12px; font-size:13px; }
+
+/* جهاز لوحي: وسط بين الاثنين */
+html[data-ui="tablet"] .settings-grid{ grid-template-columns:1fr 1fr; }
+html[data-ui="tablet"] .mode-grid{ grid-template-columns:repeat(auto-fit,minmax(142px,1fr)); }
+
+/* كمبيوتر: مساحة أوسع ونوافذ أكبر قليلاً */
+html[data-ui="desktop"] .modal{ width:min(720px,92vw); }
+html[data-ui="desktop"] .modal.wide{ width:min(1120px,94vw); }
 
 /* ========== استجابة شاملة — كل الأجهزة ========== */
 /* 1) الشاشات الكبيرة جداً (4K / تلفزيون) */

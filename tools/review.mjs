@@ -171,6 +171,7 @@ async function stage2() {
     ['شاشة التحميل ومقاومة الأعطال (loading)', 'tests/loading.test.js'],
     ['الرسم ثلاثي الأبعاد (render3d)', 'tests/render3d.test.js'],
     ['اللعب على الهاتف واللمس (mobile)', 'tests/mobile.test.js'],
+    ['واجهة النزول ومقاس النوافذ (drop)', 'tests/drop.test.js'],
     ['🕌 مواقيت الصلاة وحارس الصلاة (prayer)', 'tests/prayer.test.js'],
     ['الاستضافة الثابتة ومباراة كاملة (static)', 'tests/static.test.js'],
   ];
