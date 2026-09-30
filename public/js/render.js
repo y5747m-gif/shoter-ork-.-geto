@@ -85,7 +85,7 @@ export class Renderer {
     try { const saved = localStorage.getItem('orkz_view'); if (saved === 'fps' || saved === 'tps' || saved === 'top') this.mode = saved; } catch { }
     this.r3 = new Renderer3D(canvas, this);
     this.r3.setMode(this.mode === 'tps' ? 'tps' : 'fps');
-    this.quality = 'high';
+    this.quality = 'medium';
     this.time = 0;
     this.footprints = [];
     this.corpses = [];

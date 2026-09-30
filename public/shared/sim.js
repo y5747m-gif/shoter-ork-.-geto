@@ -91,12 +91,18 @@ function makeGrid(cell) {
       }
     },
     query(x, y, r, out) {
+      // الاستعلام يُستدعى عشرات المرات في كل إطار. استخدام includes هنا كان
+      // يحوّل الاستعلام إلى O(n²) عندما يمر الجسم على أكثر من خلية.
       out.length = 0;
+      const seen = new Set();
       const minx = Math.floor((x - r) / cell), maxx = Math.floor((x + r) / cell);
       const miny = Math.floor((y - r) / cell), maxy = Math.floor((y + r) / cell);
       for (let cx = minx; cx <= maxx; cx++) for (let cy = miny; cy <= maxy; cy++) {
         const a = map.get(key(cx, cy)); if (!a) continue;
-        for (const o of a) if (!out.includes(o)) out.push(o);
+        for (const o of a) {
+          if (seen.has(o)) continue;
+          seen.add(o); out.push(o);
+        }
       }
       return out;
     },
@@ -1003,7 +1009,11 @@ function stepBullets(match, dt, hooks) {
         if (ow.char.skill.kind === 'accuracy') dmg *= 1.08;
       }
       b.x = hit.x; b.y = hit.y;
-      damagePlayer(match, hit, dmg, ow, 'bullet', hooks, false, { head });
+      damagePlayer(match, hit, dmg, ow, 'bullet', hooks, false, {
+        head,
+        angle: Math.atan2(b.vy, b.vx),
+        impulse: Math.min(1.4, Math.hypot(b.vx, b.vy) / 900),
+      });
       if (match.events.length < 6000) match.events.push({
         t: match.time, type: 'hit', by: b.owner, on: hit.id, dmg: Math.round(dmg), head,
         x: Math.round(b.x), y: Math.round(b.y), weapon: b.weapon, silent: b.silent,
@@ -1245,6 +1255,7 @@ export function briefLoot(l) {
 export function playerPublic(p) {
   return {
     id: p.id, n: p.name, t: p.team, x: Math.round(p.x), y: Math.round(p.y), a: +p.aim.toFixed(2),
+    vx: Math.round(p.vx || 0), vy: Math.round(p.vy || 0),
     hp: Math.round(p.hp), sh: Math.round(p.shield), al: p.alive ? 1 : 0, k: p.kills, kn: p.knocked ? 1 : 0,
     c: p.charId, s: p.skinId, w: curW(p)?.id || null, veh: p.inVehicle || null,
     st: p.dropState, z: Math.round(p.z), sp: p.sprint ? 1 : 0, cr: p.crouch ? 1 : 0, pr: p.prone ? 1 : 0,

@@ -89,10 +89,13 @@ const LX = -0.42, LY = -0.34, LZ = 0.84;
  * لذلك حدّدنا dpr بقيم معقولة + مقياس دقة تكيّفي (renderScale) يهبط تلقائياً عند التهنيج.
  */
 const QUALITY = {
-  low:    { dpr: 1,    dist: 2400, fog: [1400, 2700],  trees: 1, detail: 0, parts: 200,  weather: 0,   clouds: 0, shadows: 0 },
-  medium: { dpr: 1.1,  dist: 3200, fog: [2000, 3700],  trees: 1, detail: 1, parts: 420,  weather: 60,  clouds: 4, shadows: 1 },
-  high:   { dpr: 1.35, dist: 4000, fog: [2600, 4800],  trees: 1, detail: 1, parts: 650,  weather: 110, clouds: 7, shadows: 1 },
-  ultra:  { dpr: 1.6,  dist: 5000, fog: [3200, 6000],  trees: 1, detail: 1, parts: 950,  weather: 160, clouds: 10, shadows: 1 },
+  // هذا الراسم يعمل على Canvas 2D، لذلك عدد البكسلات والأوجه أهم من
+  // المؤثرات الشكلية. القيم هنا تعطي الهاتف مساراً خفيفاً من دون إزالة
+  // المجسمات الأساسية أو التضحية بوضوح الخصوم.
+  low:    { dpr: 0.82, dist: 1800, fog: [1000, 2200], trees: 0, detail: 0, parts: 90,  weather: 0,  clouds: 0, shadows: 0 },
+  medium: { dpr: 1.00, dist: 2500, fog: [1500, 3100], trees: 0, detail: 0, parts: 180, weather: 24, clouds: 2, shadows: 0 },
+  high:   { dpr: 1.18, dist: 3400, fog: [2200, 4100], trees: 1, detail: 1, parts: 360, weather: 60, clouds: 4, shadows: 1 },
+  ultra:  { dpr: 1.35, dist: 4400, fog: [2800, 5200], trees: 1, detail: 1, parts: 650, weather: 100, clouds: 7, shadows: 1 },
 };
 
 /* ============================= الطقس لكل خريطة ============================= */
@@ -121,7 +124,7 @@ export class Renderer3D {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.w = 1; this.h = 1;
     this.dpr = 1;
-    this.quality = 'high';
+    this.quality = 'medium';
     this.bloodFx = true;
     this.mode = 'fps';            // 'fps' | 'tps'
     this.time = 0;
@@ -152,12 +155,14 @@ export class Renderer3D {
     this.stats = { faces: 0, objects: 0, drawn: 0 };
     this.fogColor = '#0f1a24';
     this.fogNear = 1200; this.fogFar = 4400;
-    this.drawDist = 4400;
-    this.cfg = QUALITY.high;
+    this.drawDist = QUALITY.medium.dist;
+    this.cfg = QUALITY.medium;
     /* مقياس دقة تكيّفي: يهبط تلقائياً عند انخفاض معدل الإطارات ويرتفع عند توفّر الأداء */
     this.renderScale = 1;
     this._frameMs = 16;     // متوسط زمن الإطار (EMA) بالميلي ثانية
     this._adaptT = 0;       // مؤقّت بين تعديلات المقياس
+    this.activeDrawDist = this.drawDist;
+    this._perfDetail = 1;
     this._corners = new Float64Array(24);
     this._scratch = new Float64Array(4);
     this._clipA = new Float64Array(64);
@@ -194,9 +199,14 @@ export class Renderer3D {
     this._adaptT = 0;
     const fm = this._frameMs;
     let s = this.renderScale;
-    if (fm > 24 && s > 0.6) s -= 0.12;       // أبطأ من ~42 إطار/ث → اخفض الدقة
-    else if (fm < 15 && s < 1) s += 0.08;    // أسرع من ~66 إطار/ث → ارفع الدقة تدريجياً
-    s = Math.max(0.6, Math.min(1, s));
+    if (fm > 30 && s > 0.58) s -= 0.16;       // جهاز ضعيف: خفض قوي وسريع للدقة
+    else if (fm > 22 && s > 0.62) s -= 0.10; // أبطأ من ~45 إطار/ث
+    else if (fm < 14 && s < 1) s += 0.06;    // ارفعها تدريجياً فقط بعد الاستقرار
+    s = Math.max(0.58, Math.min(1, s));
+    // خفض مسافة التفاصيل أيضاً، لأن خفض الدقة وحده لا يكفي لراسم Canvas.
+    const detailTarget = fm > 30 ? 0.68 : fm > 22 ? 0.82 : 1;
+    this._perfDetail += (detailTarget - this._perfDetail) * 0.35;
+    this.activeDrawDist = this.drawDist * this._perfDetail;
     if (Math.abs(s - this.renderScale) > 0.001) {
       this.renderScale = s;
       this.resize();
@@ -206,6 +216,7 @@ export class Renderer3D {
     this.quality = q || 'high';
     this.cfg = QUALITY[this.quality] || QUALITY.high;
     this.drawDist = this.cfg.dist;
+    this.activeDrawDist = this.drawDist * (this._perfDetail || 1);
     this.fogNear = this.cfg.fog[0];
     this.fogFar = this.cfg.fog[1];
     this.resize();
@@ -249,7 +260,8 @@ export class Renderer3D {
   /** اختبار سريع: هل الجسم داخل مخروط الرؤية؟ */
   _inFrustum(x, y, z, r) {
     const dx = x - this.cam.x, dy = y - this.cam.y, dz = (z || 0) - this.cam.z;
-    if (dx * dx + dy * dy > this.drawDist * this.drawDist) return false;
+    const maxDist = this.activeDrawDist || this.drawDist;
+    if (dx * dx + dy * dy > maxDist * maxDist) return false;
     const yc = dx * this.cyaw + dy * this.syaw;
     if (yc < -r) return false;
     const xc = -dx * this.syaw + dy * this.cyaw;
@@ -448,6 +460,7 @@ export class Renderer3D {
     }
     this.mode = view.firstPerson ? 'fps' : 'tps';
     this._updateCamera(view, dt);
+    this._updateCorpses(dt);
     this._setupProjection();
     this._beginFaces();
     this._drawBackground(ctx, view);
@@ -768,7 +781,7 @@ export class Renderer3D {
     }
     // آثار الأقدام
     const fps = (this.host && this.host.footprints) || [];
-    if (fps.length) {
+    if (fps.length && this.quality !== 'low') {
       ctx.fillStyle = 'rgba(0,0,0,.28)';
       for (const f of fps) {
         if (!near(f.x, f.y, 30)) continue;
@@ -819,7 +832,7 @@ export class Renderer3D {
     const out = this._objs || (this._objs = []);
     this.stats.objects = 0;
     if (world.grid) {
-      world.grid.query(this.cam.x, this.cam.y, this.drawDist, out);
+      world.grid.query(this.cam.x, this.cam.y, this.activeDrawDist || this.drawDist, out);
       for (const o of out) this._buildObstacle(o, view);
     }
     // أسقف البيوت + الأثاث
@@ -862,6 +875,9 @@ export class Renderer3D {
     // اللاعبون
     for (const p of view.players) {
       if (!p.al && !p.dying) continue;
+      // بعد وصول حدث الإقصاء نرسم نسخة الجثة المتحركة فقط، لا نسخة اللاعب
+      // ونسخة الجثة معاً (كان ذلك يسبب وميضاً ووضعية سقوط سيئة).
+      if (!p.al && p.dying && this._hasCorpse(p.id)) continue;
       if (p.id === view.myId && this.mode === 'fps') continue;      // لا نرسم أنفسنا في الأول
       if (!this._inFrustum(p.x, p.y, (p.z || 0) + 40, 140)) continue;
       // ظل أرضي ناعم (يخفت كلما ارتفع اللاعب أثناء الهبوط)
@@ -875,7 +891,7 @@ export class Renderer3D {
     // الجثث
     for (const c of this.corpses) {
       if (!this._inFrustum(c.x, c.y, 0, 120)) continue;
-      this._buildPlayer({ ...c, al: 1, dead: 1, walking: false, hp: 0 }, view);
+      this._buildPlayer({ ...c, z: c.z || 0, al: 1, dead: 1, walking: false, hp: 0, ragdoll: c.ragdoll }, view);
     }
     // القنابل والدخان
     for (const g of view.grenades) {
@@ -888,6 +904,39 @@ export class Renderer3D {
     // جدار العاصفة
     this._buildZone(view);
   }
+  /** تحديث سقوط الجثث: حركة قصيرة بفيزياء بسيطة ثم استقرار على الأرض.
+   * لا نستخدم محرك فيزياء خارجياً؛ عدد الجثث محدود، والحساب هنا أرخص بكثير
+   * من إعادة بناء وضعية جامدة في كل إطار.
+   */
+  _updateCorpses(dt) {
+    for (let i = this.corpses.length - 1; i >= 0; i--) {
+      const c = this.corpses[i];
+      const r = c.ragdoll || (c.ragdoll = { age: 0, vx: 0, vy: 0, vz: 0, spin: 0, pitch: 1.55 });
+      r.age += dt;
+      if (r.age > 16) { this.corpses.splice(i, 1); continue; }
+      const active = r.age < 0.95;
+      if (active) {
+        c.x += (c.vx || 0) * dt;
+        c.y += (c.vy || 0) * dt;
+        c.z = Math.max(0, (c.z || 0) + (r.vz || 0) * dt);
+        r.vz = (r.vz || 0) - 980 * dt;
+        const drag = Math.pow(0.08, dt);
+        c.vx = (c.vx || 0) * drag;
+        c.vy = (c.vy || 0) * drag;
+        if (c.z <= 0) { c.z = 0; r.vz = Math.max(0, -(r.vz || 0) * 0.16); }
+        c.a = (c.a || 0) + (r.spin || 0) * dt;
+      } else {
+        c.vx = (c.vx || 0) * Math.pow(0.002, dt);
+        c.vy = (c.vy || 0) * Math.pow(0.002, dt);
+        c.z = 0;
+      }
+    }
+  }
+
+  _hasCorpse(id) {
+    return !!id && this.corpses.some(c => c.id === id);
+  }
+
   _buildObstacle(o, view) {
     const biome = this.biome;
     const d2 = (o.x - this.cam.x) ** 2 + (o.y - this.cam.y) ** 2;
@@ -899,7 +948,7 @@ export class Renderer3D {
       const col = biome.build || '#7d6a52';
       this._box(o.x, o.y, 0, o.w, o.h, WALL_H, 0, col, { topColor: tint(col, -0.15) });
       // حافة علوية
-      if (this.quality !== 'low' && d2 < 2500 * 2500) {
+      if ((this.quality === 'high' || this.quality === 'ultra') && d2 < 2100 * 2100 && this._perfDetail > 0.78) {
         this._box(o.x, o.y, WALL_H, o.w + 4, o.h + 4, 8, 0, tint(col, 0.12), {});
       }
       this.stats.objects++;
@@ -909,7 +958,7 @@ export class Renderer3D {
       const col = o.hp < o.maxHp ? '#6b4a24' : '#9a6c33';
       this._box(o.x, o.y, 0, s, s, s, 0, col, { topColor: tint(col, 0.14) });
       // أشرطة خشبية
-      if (this.quality !== 'low' && d2 < 2000 * 2000) {
+      if ((this.quality === 'high' || this.quality === 'ultra') && d2 < 1700 * 1700 && this._perfDetail > 0.8) {
         this._box(o.x, o.y, s * 0.45, s + 2, 8, 8, 0, '#5c3f1e', {});
         this._box(o.x, o.y, s * 0.45, 8, s + 2, 8, 0, '#5c3f1e', {});
       }
@@ -967,7 +1016,8 @@ export class Renderer3D {
     const trunkR = Math.max(7, o.r * 0.2);
     const canR = Math.max(38, o.r * 1.9);
     const canZ = trunkH + canR * 0.55;
-    const far = d2 > 3000 * 3000 || this.quality === 'low';
+    const treeBillboardDist = this.quality === 'ultra' ? 2800 : this.quality === 'high' ? 1900 : 950;
+    const far = d2 > treeBillboardDist * treeBillboardDist || this.quality === 'low' || this._perfDetail < 0.72;
     // الكاميرا تحت التاج؟ لا ترسم الأوراق حتى لا تُحجب الرؤية
     const under = d2 < canR * canR;
     if (far) {
@@ -980,12 +1030,15 @@ export class Renderer3D {
     // التاج: ثلاث طبقات
     const leaf = biome.tree || '#4d9a53';
     const leafDark = biome.treeDark || '#1e4426';
-    const layers = [
+    const layers = this.quality === 'high' || this.quality === 'ultra' ? [
       { z: trunkH * 0.82, r: canR * 0.95, h: canR * 0.55, c: leafDark },
       { z: trunkH * 0.82 + canR * 0.42, r: canR * 0.78, h: canR * 0.5, c: leaf },
       { z: trunkH * 0.82 + canR * 0.82, r: canR * 0.5, h: canR * 0.42, c: tint(leaf, 0.12) },
+    ] : [
+      { z: trunkH * 0.82, r: canR, h: canR * 0.62, c: leafDark },
+      { z: trunkH * 0.82 + canR * 0.48, r: canR * 0.66, h: canR * 0.48, c: leaf },
     ];
-    const sides = 6;
+    const sides = this.quality === 'ultra' ? 6 : 5;
     for (const L of layers) {
       if (under) break;
       const ring = [];
@@ -1155,29 +1208,44 @@ export class Renderer3D {
     const accent = skin.accent || '#8fa3b8';
     const tone = SKIN_TONE[p.c] || '#c9905f';
     const d = Math.hypot(p.x - this.cam.x, p.y - this.cam.y);
-    // مستويات التفاصيل: ٠ قريب (كامل) · ١ متوسط · ٢ بعيد · ٣ بعيد جداً (بطاقة)
-    const lod = d > 4000 ? 3 : d > 2400 ? 2 : d > 1100 ? 1 : 0;
+    // مستويات التفاصيل: نُبقي الخصوم القريبين واضحين، ونحوّل البعيد إلى
+    // نموذج أخف بكثير على الهاتف بدلاً من بناء كل الأطراف لكل بوت.
+    const nearLod = this.quality === 'ultra' ? 1200 : this.quality === 'high' ? 950 : this.quality === 'medium' ? 650 : 480;
+    const midLod = this.quality === 'ultra' ? 2500 : this.quality === 'high' ? 1900 : this.quality === 'medium' ? 1250 : 900;
+    const farLod = this.quality === 'ultra' ? 4200 : this.quality === 'high' ? 3300 : this.quality === 'medium' ? 2100 : 1500;
+    const lod = d > farLod ? 3 : d > midLod ? 2 : d > nearLod ? 1 : 0;
     if (lod === 3 && !p.dead) { this._billboard(p.x, p.y, 0.6 * M, 1.8 * M, body, 0); return; }
-    const yaw = (p.a || 0) + Math.PI / 2;   // النموذج مواجه لمحور +y المحلي
-    // حركة المشي
+    const rag = p.ragdoll || null;
+    const yaw = (p.a || 0) + Math.PI / 2 + (rag ? (rag.spinOffset || 0) : 0); // النموذج مواجه لمحور +y المحلي
+    // حركة المشي، أو جَزْع الأطراف أثناء السقوط.
     let ph = this._anim.get(p.id) || 0;
     if (p.walking) ph += 0.19;
     this._anim.set(p.id, ph);
-    const sw = p.walking ? Math.sin(ph * 2) : Math.sin(this.time * 1.6 + (p.x % 3)) * 0.06;
-    const sw2 = p.walking ? Math.sin(ph * 2 + Math.PI) : -sw;
-    // الوضعيات
     const dead = !!p.dead || (!p.al && !p.kn);
     const knocked = !!p.kn && !dead;
-    const prone = !!p.pr && !dead;
-    const crouch = !!p.cr && !dead && !prone;
+    const prone = !!p.pr && !dead && !rag;
+    const crouch = !!p.cr && !dead && !prone && !rag;
     const airZ = p.z || 0;
     const baseZ = airZ;
-    // ارتفاع الحوض + انحناء الجسم
+    const ragT = rag ? Math.min(1, rag.age / 0.62) : 0;
+    const ragEase = ragT * ragT * (3 - 2 * ragT);
+    const ragSettle = rag ? Math.max(0, Math.min(1, (rag.age - 0.62) / 0.48)) : 0;
+    const ragWobble = rag ? (1 - ragSettle) * Math.sin(rag.age * 19) * 0.16 : 0;
+    const ragLegL = rag ? (rag.legL || 0) * (1 - ragSettle * 0.65) : 0;
+    const ragLegR = rag ? (rag.legR || 0) * (1 - ragSettle * 0.65) : 0;
+    const sw = rag ? ragLegL + ragWobble : (p.walking ? Math.sin(ph * 2) : Math.sin(this.time * 1.6 + (p.x % 3)) * 0.06);
+    const sw2 = rag ? ragLegR - ragWobble : (p.walking ? Math.sin(ph * 2 + Math.PI) : -sw);
+    // ارتفاع الحوض + انحناء الجسم. الجثة تنتقل من الوقوف إلى السقوط خلال
+    // أجزاء من الثانية، ثم تتوقف بدلاً من القفز مباشرة إلى وضعية prone.
     let hipZ = 0.92 * M, bodyPitch = 0;
     if (crouch) { hipZ = 0.6 * M; bodyPitch = 0.22; }
     if (knocked) { hipZ = 0.42 * M; bodyPitch = 0.75; }
     if (prone) { hipZ = 0.24 * M; bodyPitch = 1.45; }
     if (dead) { hipZ = 0.2 * M; bodyPitch = 1.55; }
+    if (rag) {
+      hipZ = (0.92 - 0.72 * ragEase) * M;
+      bodyPitch = (rag.finalPitch || 1.55) * ragEase + ragWobble;
+    }
     const pivotZ = 0.9 * M;
     const m = M;
     // تحويل من فضاء الشخصية (القدمان = الأصل) إلى العالم
@@ -1263,7 +1331,7 @@ export class Renderer3D {
     if (lod === 0) {
       // ذراعان في وضعية الإمساك: اليد الأمامية تمتد إلى المقدمة، والخلفية تقبض على المقبض
       // support=true للذراع الأمامية الساندة
-      const arms = hold ? [['front'], ['rear']] : [[-1, sw2], [1, sw]];
+      const arms = hold ? [['front'], ['rear']] : rag ? [[-1, rag.armL], [1, rag.armR]] : [[-1, sw2], [1, sw]];
       for (const a of arms) {
         if (hold) {
           const support = a[0] === 'front';
@@ -1281,8 +1349,9 @@ export class Renderer3D {
           // كف اليد على السلاح
           part(fx, (support ? foreY : gripY), gunZ - 0.02 * m, 0.1 * m, 0.11 * m, 0.11 * m, tone, 0, gunZ);
         } else {
-          const [side, sgn] = a;
-          const a1 = sgn * 0.5, a2 = (p.rl ? -1.2 : sgn * 0.35);
+          const [side, pose] = a;
+          const a1 = rag ? (pose?.upper ?? side * 0.5) : pose * 0.5;
+          const a2 = rag ? (pose?.lower ?? side * 0.35) : (p.rl ? -1.2 : pose * 0.35);
           const sx = side * 0.25 * m;
           part(sx, 0, shoulderZ - 0.15 * m, 0.11 * m, 0.12 * m, 0.3 * m, tint(body, 0.06), a1, shoulderZ);
           const elbowZ = shoulderZ - 0.3 * m;
@@ -1337,7 +1406,8 @@ export class Renderer3D {
       }
     }
     // تأثير الاسكن
-    if (lod === 0 && skin && skin.effect && skin.effect !== 'none' && Math.random() < 0.35 && this.quality !== 'low') {
+    if (lod === 0 && skin && skin.effect && skin.effect !== 'none' &&
+        (this.quality === 'high' || this.quality === 'ultra') && Math.random() < 0.18) {
       const col = skin.effect === 'fire' ? '#ff8b2e' : skin.effect === 'ice' ? '#8fe8ff' : skin.effect === 'lightning' ? '#69a8ff' : skin.effect === 'void' ? '#c74bff' : accent;
       this.spawnParticle(p.x + (Math.random() - 0.5) * 40, p.y + (Math.random() - 0.5) * 40, baseZ + Math.random() * 70,
         (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20, 30, col, 0.6, 5, 'spark');
@@ -1801,10 +1871,36 @@ export class Renderer3D {
       case 'kill': {
         const v = (view.players || []).find(x => x.id === e.id);
         if (v) {
-          this.corpses.push({ x: v.x, y: v.y, a: v.a, c: v.c, s: v.s, t: v.t, n: v.n, dead: 1, walking: false, al: 1, hp: 0 });
-          if (this.corpses.length > 20) this.corpses.shift();
+          const angle = Number.isFinite(e.hitAngle) ? e.hitAngle : (Number.isFinite(v.a) ? v.a : 0);
+          const impulse = Math.max(0.25, Math.min(1.4, Number(e.hitImpulse) || 0.45));
+          const seed = String(e.id || 'corpse').split('').reduce((n, ch) => n + ch.charCodeAt(0), 0);
+          const side = seed % 2 ? 1 : -1;
+          // دفعة صغيرة في اتجاه الرصاصة + سرعة اللاعب: سقوط مقنع من دون
+          // أن تقذف الجثة عبر الخريطة.
+          const push = 75 + impulse * 145;
+          const finalPitch = 1.42 + ((seed % 9) - 4) * 0.018;
+          const corpse = {
+            id: e.id, x: v.x, y: v.y, z: v.z || 0,
+            a: Number.isFinite(v.a) ? v.a : angle,
+            vx: ((v.vx ?? e.vx ?? 0) * 0.22) + Math.cos(angle) * push,
+            vy: ((v.vy ?? e.vy ?? 0) * 0.22) + Math.sin(angle) * push,
+            c: v.c, s: v.s, t: v.t, n: v.n, dead: 1, walking: false, al: 1, hp: 0,
+            ragdoll: {
+              age: 0, vz: 85 + impulse * 65, spin: side * (1.4 + impulse * 1.8),
+              finalPitch,
+              legL: side * (0.28 + impulse * 0.26), legR: -side * (0.2 + impulse * 0.18),
+              armL: { upper: -1.05 + side * 0.38, lower: -0.75 - side * 0.55 },
+              armR: { upper: -0.85 - side * 0.34, lower: -0.35 + side * 0.62 },
+            },
+          };
+          const old = this.corpses.findIndex(c => c.id === e.id);
+          if (old >= 0) this.corpses.splice(old, 1);
+          this.corpses.push(corpse);
+          // إبقاء عدد الجثث محدوداً يحمي الأجهزة الضعيفة في المواجهات الطويلة.
+          const maxCorpses = this.quality === 'low' ? 4 : this.quality === 'medium' ? 8 : 12;
+          while (this.corpses.length > maxCorpses) this.corpses.shift();
         }
-        this.burst(e.x, e.y, z, 16, { color: this.bloodFx === false ? '#8b93a1' : '#a01828', speed: 150, life: 0.7, size: 4, kind: 'blood' });
+        this.burst(e.x, e.y, z, this.quality === 'low' ? 5 : 10, { color: this.bloodFx === false ? '#8b93a1' : '#a01828', speed: 150, life: 0.7, size: 4, kind: 'blood' });
         break;
       }
       case 'explosion': {
