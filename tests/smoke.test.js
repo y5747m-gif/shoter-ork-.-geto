@@ -13,6 +13,19 @@ import { makeBotBrain, botThink, DIFFICULTY } from '../public/shared/ai.js';
 import * as gamedata from '../public/shared/gamedata.js';
 import { WEAPONS, CHARACTERS, SKINS, MAPS, MODES, ZONE_PHASES, LOOT_TABLE } from '../public/shared/gamedata.js';
 
+/* عشوائية مُبذّرة: تجعل نتائج الاختبار قابلة للتكرار تماماً (لا اختبارات متذبذبة).
+   يمكن تعطيلها بـ SEED=0 لتشغيل عشوائي حقيقي. */
+const SEED = process.env.SEED === undefined ? 20260930 : Number(process.env.SEED);
+if (SEED) {
+  let t = SEED >>> 0;
+  Math.random = () => {
+    t = (t + 0x6D2B79F5) >>> 0;
+    let x = Math.imul(t ^ (t >>> 15), 1 | t);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 let passed = 0, failed = 0;
 function test(name, fn) {
   try { fn(); console.log('  ✅', name); passed++; }

@@ -6,6 +6,7 @@ import { API, Net } from './net.js';
 import Audio2 from './audio.js';
 import { Session } from './game.js';
 import UI from './ui.js';
+import PrayerGuard from './prayer.js';
 import { MODES, MAPS, GAME } from '/shared/gamedata.js';
 
 const $ = (id) => document.getElementById(id);
@@ -28,6 +29,8 @@ class App {
     this.profile = null;
     this.ui = new UI(this);
     this.session = new Session(this);
+    // 🕌 حارس مواقيت الصلاة — يعطّل اللعبة عند دخول وقت الصلاة
+    this.prayer = new PrayerGuard(this);
     // عند اكتشاف غياب السيرفر (استضافة ثابتة): وضع محلي كامل + إيقاف محاولات الأونلاين
     API.onOffline = () => {
       // إيقاف محاولات الأونلاين بصمت — لا نُظهر أي رسالة علوية تزعج اللاعب
@@ -37,7 +40,7 @@ class App {
     // على الهاتف، ويمكن للاعب رفعها يدوياً من الإعدادات.
     this.quality = 'medium';
     try { this.quality = localStorage.getItem('orkz_quality') || 'medium'; } catch {}
-    const defSettings = { sfx: 0.8, music: 0.45, sens: 1, tsens: 1, autofire: false, blood: true, touch: false, aimassist: true, vibrate: true, tapfire: false, view: 'fps' };
+    const defSettings = { sfx: 0.8, sens: 1, tsens: 1, autofire: false, blood: true, touch: false, aimassist: true, vibrate: true, tapfire: false, view: 'fps' };
     try {
       const saved = JSON.parse(localStorage.getItem('orkz_settings') || '{}');
       this.settings = { ...defSettings, ...saved };
@@ -99,6 +102,7 @@ class App {
       this.loadingAnim();
       const t0 = performance.now();
       try { this.audio.init(); } catch {}
+      try { this.prayer.init(); } catch (e) { console.warn('[prayer] init', e); }
       // تحقق من الجلسة
       let ok = false;
       if (this.token) {
@@ -148,7 +152,6 @@ class App {
           console.error('[boot] showMenu error:', e);
           $('scr-auth')?.classList.add('active');
         }
-        try { this.audio.startMusic('menu'); } catch {}
       } else {
         $('scr-auth')?.classList.add('active');
       }
@@ -308,8 +311,6 @@ class App {
     // إعدادات
     const sfxEl = $('set-sfx');
     if (sfxEl) sfxEl.oninput = (e) => { this.audio.setSfx(+e.target.value / 100); this.settings.sfx = +e.target.value / 100; };
-    const musEl = $('set-music');
-    if (musEl) musEl.oninput = (e) => { this.audio.setMusic(+e.target.value / 100); this.settings.music = +e.target.value / 100; };
     const sensEl = $('set-sens');
     if (sensEl) sensEl.oninput = (e) => { this.settings.sens = +e.target.value / 100; if (this.session?.input) this.session.input.sens = this.settings.sens; };
     const qEl = $('set-quality');
@@ -345,9 +346,7 @@ class App {
 
   applySettings() {
     this.audio.setSfx(this.settings.sfx ?? 0.8);
-    this.audio.setMusic(this.settings.music ?? 0.45);
     if ($('set-sfx')) $('set-sfx').value = (this.settings.sfx ?? 0.8) * 100;
-    if ($('set-music')) $('set-music').value = (this.settings.music ?? 0.45) * 100;
     if ($('set-sens')) $('set-sens').value = (this.settings.sens ?? 1) * 100;
     if ($('set-quality')) $('set-quality').value = this.quality;
     if ($('set-tsens')) $('set-tsens').value = (this.settings.tsens ?? 1) * 100;
@@ -397,7 +396,7 @@ class App {
       this.token = r.token; this.profile = r.profile;
       try { localStorage.setItem('orkz_token', r.token); } catch {}
       this.net.connect(this.token);
-      this.audio.resume(); this.audio.startMusic('menu'); this.audio.uiBig();
+      this.audio.resume(); this.audio.uiBig();
       $('scr-auth')?.classList.remove('active');
       this.ui.showMenu();
     } catch { this.authErr('تعذر الاتصال بالسيرفر'); }
@@ -411,7 +410,6 @@ class App {
     this.token = r.token; this.profile = r.profile;
     try { localStorage.setItem('orkz_token', r.token); } catch {}
     this.net.connect(this.token);
-    this.audio.startMusic('menu');
     $('scr-auth')?.classList.remove('active');
     this.ui.showMenu();
     this.ui.toast('مرحباً ' + r.profile.name + '! 🎉', 'ok');
@@ -423,7 +421,6 @@ class App {
     this.token = r.token; this.profile = r.profile;
     try { localStorage.setItem('orkz_token', r.token); } catch {}
     this.net.connect(this.token);
-    this.audio.startMusic('menu');
     $('scr-auth')?.classList.remove('active');
     this.ui.showMenu();
     this.ui.toast('أهلاً بعودتك ' + r.profile.name + ' 👑', 'ok');
@@ -444,7 +441,18 @@ class App {
   }
 
   /* ---------- بدء المباريات ---------- */
+  /** هل اللعب ممنوع الآن بسبب وقت الصلاة؟ */
+  prayerBlocked() {
+    if (this.prayer && this.prayer.locked) {
+      try { this.prayer.updateOverlay(); } catch {}
+      try { this.ui.toast('🕌 وقت الصلاة — اللعبة متوقفة حتى تؤكّد صلاتك', 'err'); } catch {}
+      return true;
+    }
+    return false;
+  }
+
   async openPrivate() {
+    if (this.prayerBlocked()) return;
     // الغرف الخاصة تحتاج السيرفر الأونلاين — إن لم يوجد نوضح ذلك بدل شاشة ميتة
     if (!this.net.connected && !API.offline) this.net.connect(this.token);
     if (!this.net.connected && !API.offline) await this.waitConnected(1500);
@@ -474,6 +482,7 @@ class App {
     } catch{}
   }
   async startSelected(again) {
+    if (this.prayerBlocked()) return;
     const mode = this._lastStart?.mode === 'offline' || !this.ui.onlineSelect ? 'offline' : 'online';
     const modeId = (again && this._lastStart?.modeId) || this.ui.selectedMode;
     const mapId = (again && this._lastStart?.mapId) || this.ui.selectedMap;

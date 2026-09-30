@@ -311,6 +311,7 @@ export class UI {
     if (name === 'rank') this.renderRank();
     if (name === 'friends') this.renderFriends();
     if (name === 'locker') this.renderLocker();
+    if (name === 'prayer') { try { this.app.prayer?.renderPane(); } catch { } }
   }
 
   /* ---------- الخزنة ---------- */
