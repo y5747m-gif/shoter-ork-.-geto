@@ -61,6 +61,12 @@ for (const b of ['fire', 'aim', 'reload', 'jump', 'crouch', 'prone', 'pickup', '
   ok('زر «' + b + '» موجود', btns.includes(b));
 ok('زر رمي إضافي لليد اليسرى', !!doc.querySelector('.tbtn.fire2'));
 ok('عنقود القتال أسفل اليمين', !!doc.querySelector('.tcluster'));
+ok('عمود الأدوات على الحافة اليمنى (٢×٣)', !!doc.querySelector('.tutil'));
+const tutilBtns = [...doc.querySelectorAll('.tutil .tbtn')].map(b => b.dataset.tbtn);
+ok('عمود الأدوات فيه ٦ أزرار', tutilBtns.length === 6, tutilBtns.join(','));
+ok('عمود الأدوات لا يحتوي النتائج/ملء الشاشة (انتقلت أعلى اليسار)', !tutilBtns.includes('score') && !tutilBtns.includes('fs'));
+ok('أزرار النتائج وملء الشاشة أعلى اليسار', !!doc.querySelector('.tmini [data-tbtn=score]') && !!doc.querySelector('.tmini [data-tbtn=fs]'));
+ok('كل أزرار الأدوات داخل عمود واحد (لا شريط وسطي قديم)', !doc.querySelector('.tcol'));
 
 console.log('\n🕹️ العصا العائمة والنظر باللمس');
 const { Input2 } = await import(pathToFileURL(path.join(ROOT, 'public', 'js', 'input.js')).href);
@@ -132,6 +138,11 @@ const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8
 ok('CSS فيه تخطيط العنقود الأفقي', /\.tcluster\{/.test(css.replace(/\s+/g, '')) || css.includes('.tcluster'));
 ok('CSS يحترم حواف الشاشة (safe-area)', css.includes('env(safe-area-inset-bottom'));
 ok('أحجام الأزرار تتكيّف مع الشاشات القصيرة', css.includes('max-height:360px') && css.includes('--tbfire'));
+ok('أحجام الأزرار متكيّفة بوحدات vh (clamp)', /--tb:clamp\(/.test(css.replace(/\s+/g, '')));
+ok('فراغات العنقود لا تبتلع اللمس (pointer-events للأزرار فقط)', /\.tcluster\s*\{[^}]*pointer-events:none/.test(css.replace(/\s+/g, '')) || css.includes('.tcluster{position:absolute;right:max(14px'));
+ok('عمود الأدوات فوق العنقود مباشرة', css.includes('.tutil'));
+ok('أشرطة الصحة أسفل الوسط بعيداً عن الإبهامين', /html\.is-touch #hud \.hud-left/.test(css));
+ok('قائمة الأسلحة والذخيرة أسفل الوسط', /html\.is-touch #hud \.hud-right/.test(css));
 
 console.log('\n🌦️ الطقس والظلال ثلاثية الأبعاد');
 const r3src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'render3d.js'), 'utf8');

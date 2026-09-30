@@ -89,7 +89,6 @@ export class Input2 {
     this.stickEl = stick; this.knobEl = knob;
     this.lookIds = new Map();          // أصابع النظر (تعدد لمسات)
     this.fireDrag = null;              // إصبع بدأ من زر الرمي ويستمر بالنظر
-    const RADIUS = 62;
 
     const placeStick = (x, y) => {
       if (!stick) return;
@@ -103,18 +102,25 @@ export class Input2 {
     const resetStick = () => {
       this.stick.active = false; this.stick.id = null;
       this.stick.dx = 0; this.stick.dy = 0;
-      if (knob) knob.style.transform = 'translate(0,0)';
+      if (knob) knob.style.transform = 'translate(-50%,-50%)';
       if (stick) { stick.classList.add('idle'); stick.style.left = ''; stick.style.top = ''; stick.style.right = ''; stick.style.bottom = ''; }
     };
     this._resetStick = resetStick;
 
+    /* نصف قطر العصا يتبع حجمها الفعلي (يتكيّف مع حجم الشاشة الأفقية) */
+    const stickRadius = () => {
+      const size = (stick && stick.offsetWidth) || 130;
+      return Math.max(40, size * 0.38);
+    };
+
     const moveStick = (x, y) => {
+      const R = stickRadius();
       const dx = x - this.stick.cx, dy = y - this.stick.cy;
       const len = Math.hypot(dx, dy);
-      const m = Math.min(1, len / RADIUS);
+      const m = Math.min(1, len / R);
       const a = Math.atan2(dy, dx);
       this.stick.dx = Math.cos(a) * m; this.stick.dy = Math.sin(a) * m;
-      if (knob) knob.style.transform = `translate(${this.stick.dx * 46}px, ${this.stick.dy * 46}px)`;
+      if (knob) knob.style.transform = `translate(calc(-50% + ${this.stick.dx * R * 0.55}px), calc(-50% + ${this.stick.dy * R * 0.55}px))`;
     };
 
     const startStick = (x, y, id) => {
@@ -122,11 +128,11 @@ export class Input2 {
       this.stick.cx = x; this.stick.cy = y;
       this.stick.dx = 0; this.stick.dy = 0;
       placeStick(x, y);
-      if (knob) knob.style.transform = 'translate(0,0)';
+      if (knob) knob.style.transform = 'translate(-50%,-50%)';
     };
 
-    /** منطقة العصا: النصف الأيسر السفلي (نترك الأعلى للخريطة المصغّرة والواجهة) */
-    const inMoveZone = (x, y) => x < innerWidth * 0.46 && y > innerHeight * 0.22;
+    /** منطقة العصا: الربع الأيسر السفلي (نترك الأعلى للواجهة وأزرار النتائج) */
+    const inMoveZone = (x, y) => x < innerWidth * 0.44 && y > innerHeight * 0.30;
 
     const target = this.cv || (typeof document !== 'undefined' ? document.body : null);
     if (target && target.addEventListener) {

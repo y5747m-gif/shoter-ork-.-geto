@@ -36,10 +36,16 @@ class App {
       // إيقاف محاولات الأونلاين بصمت — لا نُظهر أي رسالة علوية تزعج اللاعب
       try { this.net.stop(); } catch {}
     };
-    // الجودة المتوسطة هي الافتراضي المتوازن: Canvas 2D يستهلك بكسلات كثيرة
-    // على الهاتف، ويمكن للاعب رفعها يدوياً من الإعدادات.
-    this.quality = 'medium';
-    try { this.quality = localStorage.getItem('orkz_quality') || 'medium'; } catch {}
+    // الجودة «تلقائي» هي الافتراضي: تكتشف قوة الجهاز ثم تتكيّف لحظياً مع معدل الإطارات
+    // (الأجهزة الضعيفة و٣٠fps تنخفض لها الدقة تلقائياً، والأجهزة القوية ترتفع لها)
+    this.quality = 'auto';
+    try {
+      this.quality = localStorage.getItem('orkz_quality') || 'auto';
+      if (!['auto', 'low', 'medium', 'high', 'ultra'].includes(this.quality)) this.quality = 'auto';
+    } catch {}
+    this.deviceTier = 'medium';   // درجة جهاز المستخدم المكتشفة
+    this.autoTier = null;         // الدرجة الحالية للوضع التلقائي (تتغيّر مع الأداء)
+    this.perf = { fps: 60, lowT: 0, highT: 0, cooldown: 0, showT: 0 };
     const defSettings = { sfx: 0.8, sens: 1, tsens: 1, autofire: false, blood: true, touch: false, aimassist: true, vibrate: true, tapfire: false, view: 'fps' };
     try {
       const saved = JSON.parse(localStorage.getItem('orkz_settings') || '{}');
@@ -58,20 +64,107 @@ class App {
       const small = Math.min(innerWidth, innerHeight) <= 900;
       // نافذة قصيرة على الكمبيوتر ليست هاتفاً: نعتمد اللمس/coarse/وكيل المستخدم فقط
       const isMobile = coarse || (touch && small) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-      // ضبط الجودة تلقائياً على الهواتف المتوسطة
-      if (isMobile && this.quality === 'high' && navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) {
-        // خفّض الجودة قليلاً على الأجهزة الضعيفة فقط إذا لم يخترها المستخدم
-        try { if (!localStorage.getItem('orkz_quality')) this.quality = 'medium'; } catch {}
-      }
-      // فعّل أزرار اللمس تلقائياً على الأجهزة اللمسية
+      this.isMobile = isMobile;
+      this.deviceTier = this.detectTier(isMobile);
+      // فعّل أزرار اللمس تلقائياً على الأجهزة اللمسية — مرة واحدة فقط (لا نلغي اختيار اللاعب)
       if (isMobile && (coarse || touch)) {
-        this.settings.touch = true;
-        try { localStorage.setItem('orkz_settings', JSON.stringify(this.settings)); } catch {}
+        let had = false;
+        try { had = !!localStorage.getItem('orkz_settings'); } catch {}
+        if (!had) {
+          this.settings.touch = true;
+          try { localStorage.setItem('orkz_settings', JSON.stringify(this.settings)); } catch {}
+        }
       }
       document.documentElement.classList.toggle('is-touch', !!isMobile);
       document.documentElement.classList.toggle('is-desktop', !isMobile);
       return isMobile;
-    } catch { return false; }
+    } catch { this.isMobile = false; return false; }
+  }
+
+  /** تقدير قوة الجهاز → درجة جودة ابتدائية للوضع «تلقائي» (ضعيف/متوسط/قوي) */
+  detectTier(isMobile) {
+    try {
+      let score = 0;
+      const cores = navigator.hardwareConcurrency || 4;
+      const mem = navigator.deviceMemory || 0;          // جيجابايت (كروم فقط — البقية 0)
+      if (cores >= 12) score += 3;
+      else if (cores >= 8) score += 2;
+      else if (cores >= 6) score += 1;
+      else score -= 1;
+      if (mem >= 8) score += 2;
+      else if (mem >= 4) score += 1;
+      else if (mem > 0) score -= 1;
+      const dpr = window.devicePixelRatio || 1;
+      const px = Math.max((screen && screen.width) || 0, (screen && screen.height) || 0) * dpr;
+      if (px >= 2200) score += 1;                       // شاشة عالية الدقة تحتاج قوة أعلى
+      if (isMobile) score -= 2;                         // الراسم البرمجي أثقل على الهواتف
+      if (cores <= 4 || (mem > 0 && mem <= 3)) score -= 2;   // جهاز ضعيف
+      if (/Android [4-9]\./.test(navigator.userAgent || '')) score -= 1;
+      if (score >= 3) return 'high';
+      if (score >= 1) return 'medium';
+      return 'low';
+    } catch { return 'medium'; }
+  }
+
+  /** الجودة الفعلية المطبَّقة على الراسم */
+  effectiveQuality() {
+    if (this.quality !== 'auto') return this.quality;
+    return this.autoTier || this.deviceTier || 'medium';
+  }
+  applyQuality() {
+    try { this.session.renderer.setQuality(this.effectiveQuality()); } catch {}
+    const q = $('set-quality');
+    if (q) q.value = this.quality;
+  }
+
+  /**
+   * حاكم الأداء (للوضع «تلقائي»): يراقب معدل الإطارات لحظياً —
+   * الأجهزة الضعيفة/٣٠fps تنخفض لها الجودة تلقائياً حتى تستقر،
+   * والأجهزة القوية ترتفع لها تدريجياً حتى الحد المكتشف لجهازها.
+   */
+  perfTick(dt) {
+    const p = this.perf;
+    const inst = dt > 0 ? Math.min(240, 1 / dt) : 60;
+    p.fps += (inst - p.fps) * 0.05;                     // متوسط منزلق
+    p.cooldown = Math.max(0, p.cooldown - dt);
+    // عرض معدل الإطارات في الـ HUD (مرتين في الثانية)
+    p.showT += dt;
+    if (p.showT > 0.5) {
+      p.showT = 0;
+      const el = $('hud-fps');
+      if (el) {
+        const f = Math.round(p.fps);
+        el.textContent = f + ' FPS';
+        el.style.color = f >= 50 ? '#9fe8a8' : f >= 28 ? '#ffd166' : '#ff8a9a';
+      }
+    }
+    if (this.quality !== 'auto' || p.cooldown > 0) return;
+    const tiers = ['low', 'medium', 'high', 'ultra'];
+    let i = tiers.indexOf(this.autoTier || this.deviceTier);
+    if (p.fps < 27) {
+      // تهنيج مستمر ثانيتين → انزل درجة كاملة (دقة أقل + مسافة رسم أقل + جسيمات أقل)
+      p.lowT += dt;
+      if (p.lowT >= 2 && i > 0) {
+        i--;
+        this.autoTier = tiers[i];
+        this.applyQuality();
+        p.cooldown = 5; p.lowT = 0; p.highT = 0;
+      }
+    } else {
+      p.lowT = 0;
+      if (p.fps > 55 && i >= 0 && i < tiers.indexOf(this.deviceTier)) {
+        // أداء فائض مستقر ٨ ثوانٍ → اصعد درجة تدريجياً حتى حد الجهاز
+        p.highT += dt;
+        if (p.highT >= 8) {
+          i++;
+          this.autoTier = tiers[i];
+          this.applyQuality();
+          p.cooldown = 6; p.highT = 0;
+        }
+      } else if (p.fps <= 55) {
+        p.highT = 0;
+      }
+    }
   }
 
   setupUniversalSupport() {
@@ -121,7 +214,7 @@ class App {
       try { this.bindNet(); } catch {}
       try { this.bindUI(); } catch {}
       try { this.applySettings(); } catch {}
-      try { this.session.renderer.setQuality(this.quality); } catch {}
+      try { this.applyQuality(); } catch {}
 
       // شريط التحميل
       const steps = [
@@ -314,7 +407,14 @@ class App {
     const sensEl = $('set-sens');
     if (sensEl) sensEl.oninput = (e) => { this.settings.sens = +e.target.value / 100; if (this.session?.input) this.session.input.sens = this.settings.sens; };
     const qEl = $('set-quality');
-    if (qEl) qEl.onchange = (e) => { this.quality = e.target.value; this.session.renderer.setQuality(this.quality); };
+    if (qEl) qEl.onchange = (e) => {
+      this.quality = e.target.value;
+      if (this.quality === 'auto') {
+        this.autoTier = this.deviceTier;   // ابدأ من درجة الجهاز ثم تكيّف مع الأداء
+        this.perf = { fps: 60, lowT: 0, highT: 0, cooldown: 2, showT: 0 };
+      }
+      this.applyQuality();
+    };
     const tsEl = $('set-tsens');
     if (tsEl) tsEl.oninput = (e) => { this.settings.tsens = +e.target.value / 100; if (this.session?.input) this.session.input.touchLookSens = this.settings.tsens; };
     const aaEl = $('set-aimassist');
@@ -539,7 +639,13 @@ class App {
     const tick = (ts) => {
       const dt = Math.min(0.05, (ts - last) / 1000);
       last = ts;
-      if (this.session.running) this.session.update(dt);
+      /* اللعبة لا تعمل عمودياً أبداً: تجميد كامل أثناء طبقة «دوّر الجهاز»
+         (نستمر بتحديث الطابع الزمني حتى لا تقفز اللعبة بعد التدوير) */
+      if (window.__orkPortraitBlocked) { requestAnimationFrame(tick); return; }
+      if (this.session.running) {
+        this.session.update(dt);
+        this.perfTick(dt);
+      }
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

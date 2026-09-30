@@ -325,19 +325,27 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 
 /* ---------- لمس ---------- */
 /* ================== تخطيط اللمس الأفقي (مثل بابجي / فري فاير) ==================
-   يسار: عصا حركة عائمة تظهر حيث تضع إبهامك · يمين: سحب للنظر + عنقود أزرار القتال
-   أسفل الوسط: شريط أدوات صغير · كل الأحجام متغيّرة حسب ارتفاع الشاشة الأفقية      */
-.touch{position:absolute;inset:0;pointer-events:none;
-  --tb:64px; --tbs:44px; --tbfire:94px;
-  padding-bottom:env(safe-area-inset-bottom,0); padding-left:env(safe-area-inset-left,0); padding-right:env(safe-area-inset-right,0);}
+   يسار أسفل: عصا حركة عائمة تظهر حيث تضع إبهامك
+   يمين أسفل: عنقود القتال (رمي كبير + تصويب + قفز/انحناء/استلقاء/تعبئة)
+   يمين وسط: عمود أدوات ٢×٣ (التقاط/علاج/قنبلة/مهارة/تبديل/مركبة)
+   أعلى اليسار: النتائج + ملء الشاشة · وسط أسفل: الأسلحة والذخيرة والصحة
+   كل الأحجام بوحدات vh متكيّفة: تعمل من هاتف ٣٢٠ ارتفاعاً حتى التابلت        */
+.touch{position:absolute;inset:0;pointer-events:none;z-index:5;
+  /* أحجام متكيّفة مع ارتفاع الشاشة الأفقية — تضمن ضغطاً مريحاً على كل جهاز */
+  --tb:clamp(46px,12.5vh,64px);        /* زر قتال متوسط */
+  --tbs:clamp(34px,9.5vh,46px);        /* زر أداة صغير */
+  --tbxs:clamp(30px,8.5vh,38px);       /* زر صغير جداً (أعلى اليسار) */
+  --tbfire:clamp(70px,19vh,96px);      /* زر الرمي الكبير */
+  --tgap:clamp(6px,1.8vh,10px);        /* مسافة بين الأزرار */
+}
 /* --- العصا العائمة --- */
-.stick{position:absolute;width:150px;height:150px;border-radius:50%;
+.stick{position:absolute;width:clamp(112px,30vh,158px);height:clamp(112px,30vh,158px);border-radius:50%;
   background:radial-gradient(circle,rgba(255,255,255,.13),rgba(255,255,255,.03));
   border:2px solid rgba(255,255,255,.2);pointer-events:none;touch-action:none;
   box-shadow:0 8px 30px rgba(0,0,0,.35) inset; transition:opacity .18s ease;}
-.stick.idle{left:max(26px,env(safe-area-inset-left,0));
-  bottom:max(22px,calc(env(safe-area-inset-bottom,0) + 16px)); opacity:.42;}
-.stick i{position:absolute;top:50%;left:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;
+.stick.idle{left:max(22px,env(safe-area-inset-left,0));
+  bottom:max(20px,calc(env(safe-area-inset-bottom,0) + 14px)); opacity:.42;}
+.stick i{position:absolute;top:50%;left:50%;width:42%;height:42%;transform:translate(-50%,-50%);border-radius:50%;
   background:radial-gradient(circle at 35% 30%,#fff6d5,var(--gold2));box-shadow:0 6px 18px rgba(0,0,0,.5);
   transition:transform .04s linear;}
 .stick .stick-hint{position:absolute;bottom:-20px;left:0;width:100%;text-align:center;
@@ -347,15 +355,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .tbtn{width:var(--tb);height:var(--tb);border-radius:50%;background:rgba(255,255,255,.1);
   border:2px solid rgba(255,255,255,.22);font-size:24px;line-height:1;color:#fff;
   display:flex;align-items:center;justify-content:center;
-  backdrop-filter:blur(4px);touch-action:none;-webkit-touch-callout:none;pointer-events:auto;
+  touch-action:none;-webkit-touch-callout:none;pointer-events:auto;
   transition:transform .07s ease, background .12s ease;}
 .tbtn:active,.tbtn.on{background:rgba(255,198,61,.42);transform:scale(.93)}
-.tbtn.sm{width:var(--tbs);height:var(--tbs);font-size:18px;border-width:1.5px;background:rgba(255,255,255,.08)}
-.tbtn.mid{width:var(--tb);height:var(--tb);font-size:22px}
-/* عنقود القتال أسفل اليمين */
-.tcluster{position:absolute;right:max(16px,env(safe-area-inset-right,0));
-  bottom:max(16px,calc(env(safe-area-inset-bottom,0) + 10px));
-  display:grid;gap:10px;align-items:center;justify-items:center;pointer-events:auto;
+.tbtn.sm{width:var(--tbs);height:var(--tbs);font-size:clamp(15px,4.6vh,20px);border-width:1.5px;background:rgba(255,255,255,.08)}
+.tbtn.xs{width:var(--tbxs);height:var(--tbxs);font-size:clamp(13px,4vh,17px);border-width:1.5px;background:rgba(255,255,255,.07)}
+.tbtn.mid{width:var(--tb);height:var(--tb);font-size:clamp(18px,5.8vh,24px)}
+/* عنقود القتال أسفل اليمين — الحاوية شفافة للمس حتى لا تبتلع الفراغات سحب النظر */
+.tcluster{position:absolute;right:max(14px,env(safe-area-inset-right,0));
+  bottom:max(14px,calc(env(safe-area-inset-bottom,0) + 8px));
+  display:grid;gap:var(--tgap);align-items:center;justify-items:center;pointer-events:none;
   grid-template-columns:var(--tb) var(--tb) var(--tbfire);
   grid-template-areas:"rel jmp aim" "prn cro fire";}
 .tcluster [data-tbtn=reload]{grid-area:rel}
@@ -364,18 +373,26 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .tcluster [data-tbtn=prone]{grid-area:prn}
 .tcluster [data-tbtn=aim]{grid-area:aim}
 .tcluster [data-tbtn=fire]{grid-area:fire}
-.tbtn.aim{width:var(--tb);height:var(--tb);background:radial-gradient(circle,rgba(120,200,255,.32),rgba(60,140,220,.16));font-size:26px}
-.tbtn.fire{width:var(--tbfire);height:var(--tbfire);font-size:34px;
+.tcluster .tbtn{pointer-events:auto}
+.tbtn.aim{background:radial-gradient(circle,rgba(120,200,255,.32),rgba(60,140,220,.16));font-size:clamp(20px,6.5vh,27px)}
+.tbtn.fire{width:var(--tbfire);height:var(--tbfire);font-size:clamp(26px,8.5vh,36px);
   background:radial-gradient(circle,rgba(255,110,70,.55),rgba(255,60,40,.22));
   border-color:rgba(255,140,90,.55);box-shadow:0 0 22px rgba(255,90,50,.25)}
-/* زر رمي إضافي لليد اليسرى */
+/* عمود الأدوات — الحافة اليمنى فوق عنقود القتال مباشرة (شبكة ٢×٣) */
+.tutil{position:absolute;right:max(14px,env(safe-area-inset-right,0));
+  bottom:calc(max(14px,calc(env(safe-area-inset-bottom,0) + 8px)) + (var(--tb) * 2) + var(--tgap) + 10px);
+  display:grid;grid-template-columns:var(--tbs) var(--tbs);grid-auto-rows:var(--tbs);
+  gap:calc(var(--tgap) * 0.7);pointer-events:none;justify-items:center}
+.tutil .tbtn{pointer-events:auto}
+/* أزرار صغيرة أعلى اليسار (النتائج + ملء الشاشة) */
+.tmini{position:absolute;top:max(8px,calc(env(safe-area-inset-top,0) + 4px));
+  left:max(10px,env(safe-area-inset-left,0));
+  display:flex;gap:8px;pointer-events:none}
+.tmini .tbtn{pointer-events:auto}
+/* زر رمي إضافي لليد اليسرى — الحافة اليسرى بمنتصف الشاشة */
 .tbtn.fire2{position:absolute;left:max(14px,env(safe-area-inset-left,0));
-  top:46%;width:60px;height:60px;font-size:24px;opacity:.75;
+  top:40%;width:clamp(48px,13vh,62px);height:clamp(48px,13vh,62px);font-size:clamp(19px,6vh,25px);opacity:.78;
   background:radial-gradient(circle,rgba(255,110,70,.4),rgba(255,60,40,.14));border-color:rgba(255,140,90,.4)}
-/* شريط الأدوات أسفل الوسط */
-.tcol{position:absolute;left:50%;transform:translateX(-50%);
-  bottom:max(12px,calc(env(safe-area-inset-bottom,0) + 8px));
-  display:flex;gap:8px;pointer-events:auto;}
 
 /* ---------- النتائج ---------- */
 .results{text-align:center}
@@ -430,7 +447,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .rotate-bar i{ display:block; height:100%; width:42%; background:linear-gradient(90deg,var(--gold2),var(--gold)); border-radius:8px; animation:barMove 1.2s ease-in-out infinite alternate; }
 @keyframes barMove{ from{ transform:translateX(-20%) } to{ transform:translateX(140%) } }
 #btn-rotate-try{ width:100%; margin-top:4px; }
-#btn-rotate-anyway{ width:100%; margin-top:10px; }
+.rotate-note{ color:var(--dim); font-size:12.5px; font-weight:700; margin:10px 0 0; }
 
 /* ========== رسالة الفشل الآمنة (لا شاشة تحميل عالقة أبداً) ========== */
 .boot-fail{
@@ -519,23 +536,15 @@ body{
   .compass{ height:20px; width:min(380px,46vw); }
   .match-info{ padding:4px 10px; font-size:12px; gap:8px; }
   .bars{ gap:3px; }
-  .bar{ height:14px; width:min(260px,38vw); }
+  .bar{ height:14px; }
   .bar span{ font-size:10px; }
-  .hud-left{ bottom:6px; inset-inline-start:8px; }
-  .hud-right{ bottom:6px; inset-inline-end:8px; gap:6px; }
   .ammo-box{ padding:4px 10px; }
   .ammo-box b{ font-size:20px; }
   .ammo-box em{ font-size:11px; max-width:90px; }
   .wslot{ padding:4px 8px; font-size:11px; }
   .items{ gap:4px; }
   .item{ padding:3px 7px; font-size:10px; }
-  /* أزرار اللمس أفقية مضغوطة لكن سهلة الضغط */
-  .touch{ --tb:54px; --tbs:40px; --tbfire:80px; }
-  .stick{ width:124px; height:124px; }
-  .stick i{ width:52px; height:52px; margin:-26px 0 0 -26px; }
-  .tcluster{ gap:8px; }
-  .tbtn.fire{ font-size:28px; }
-  .tbtn.fire2{ width:52px; height:52px; font-size:21px; }
+  /* أحجام أزرار اللمس يتولاها clamp(--tb…) في .touch تلقائياً */
   .chat-live{ bottom:62px; max-height:90px; font-size:11px; }
   .crosshair{ width:32px; height:32px; }
 }
@@ -544,17 +553,9 @@ body{
   #minimap{ width:90px; height:90px; }
   .compass{ display:none; }
   .match-info{ font-size:11px; padding:3px 8px; }
-  .bar{ width:200px; height:12px; }
-  .hud-left{ bottom:4px; }
-  .hud-right{ bottom:4px; }
-  .touch{ --tb:46px; --tbs:36px; --tbfire:68px; }
-  .tcluster{ gap:6px; }
-  .tbtn{ font-size:18px; }
-  .tbtn.fire{ font-size:24px; }
+  .bar{ height:12px; }
   .tbtn.fire2{ display:none; }
-  .tcol{ gap:6px; }
-  .stick{ width:104px; height:104px; }
-  .stick i{ width:44px; height:44px; margin:-22px 0 0 -22px; }
+  .gear{ display:none; }
 }
 /* 7) هواتف عامة (أقل من 560 — عمودية سيراها طبقة التدوير) */
 @media (max-width:560px){
@@ -562,8 +563,7 @@ body{
   .match-info{font-size:12px;gap:8px;padding:5px 10px}
   .bar{width:60vw}
   .ammo-box b{font-size:24px}
-  .touch{ --tb:56px; --tbs:40px; --tbfire:82px; }
-  /* لكن عند التدوير أفقياً (بعد إخفاء الطبقة على بعض الأجهزة التي لا تدعم القفل) — تأكد من التخطيط */
+  /* أحجام أزرار اللمس يتولاها clamp(--tb…) حسب الارتفاع — لا override هنا */
   .top-bar{ flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
   .top-bar::-webkit-scrollbar{ display:none; }
   .currencies{ flex-wrap:nowrap; }
@@ -584,7 +584,8 @@ body{
 }
 /* 9) أجهزة تعمل باللمس فقط — تكبير مناطق الضغط */
 @media (hover:none) and (pointer:coarse){
-  button, .tab, .side-btn, .mode-card, .map-card{ min-height:44px; }
+  /* أزرار الواجهات لها حد أدنى مريح — أزرار اللعب (.tbtn) لها أحجامها الخاصة المتكيّفة */
+  button:not(.tbtn), .tab, .side-btn, .mode-card, .map-card{ min-height:44px; }
   .btn-gold, .btn-ghost{ padding-top:13px; padding-bottom:13px; }
   input, select{ font-size:16px; } /* يمنع تكبير iOS */
   .tbtn{ backdrop-filter:none; -webkit-backdrop-filter:none; }
@@ -605,36 +606,46 @@ body{
   .cards-row{ margin-top:8px; }
 }
 
-/* ========== إخفاء طبقة التدوير على الدسكتوب والشاشات الكبيرة ========== */
-@media (min-width:901px) and (min-height:501px){
-  #rotate-overlay{ display:none !important; }
-}
-/* على الأجهزة التي تدعم الوضع الأفقي بالفعل — لا تظهر */
-@media (orientation:landscape) and (min-width:560px){
-  #rotate-overlay.visible{ opacity:0; visibility:hidden; }
-}
+/* ========== منع الوضع العمودي — القرار لمدير الاتجاه في index.html ==========
+   لا نُخفي الطبقة عبر CSS على أي جهاز: أي شاشة عمودية تُحجب (هاتف/تابلت/نافذة ضيقة). */
 
 /* ========== HUD مُعاد ترتيبه للأجهزة اللمسية (الوضع الأفقي) ==========
-   نرفع أشرطة الصحة وصندوق الذخيرة فوق أزرار اللمس حتى لا يغطيها الإبهام،
-   ونستخدم اتجاهات فيزيائية (يسار/يمين) لأن أزرار اللعب فيزيائية لا منطقية. */
+   تخطيط شبيه ببابجي موبايل:
+   • أسفل الوسط: صناديق الأسلحة + الذخيرة (بين العصا وعنقود الرمي)
+   • فوقها وسطاً: أشرطة الصحة/الدرع/الطاقة — بعيدة عن إبهامي اليدين
+   • العصا يسار أسفل · عنقود القتال يمين أسفل · الأدوات يمين فوق العنقود
+   اتجاهات فيزيائية (يسار/يمين) لأن أزرار اللعب فيزيائية لا منطقية. */
 html.is-touch #hud .hud-left{
-  left:max(12px, env(safe-area-inset-left,0)); right:auto;
-  bottom:max(152px, calc(env(safe-area-inset-bottom,0) + 148px));
-  align-items:flex-start;
+  left:50%; right:auto; transform:translateX(-50%);
+  bottom:calc(max(10px, env(safe-area-inset-bottom,0)) + 112px);
+  align-items:center; width:auto;
 }
 html.is-touch #hud .hud-right{
-  right:max(12px, env(safe-area-inset-right,0)); left:auto;
-  bottom:max(152px, calc(env(safe-area-inset-bottom,0) + 148px));
-  align-items:flex-end;
+  left:50%; right:auto; transform:translateX(-50%);
+  bottom:max(10px, env(safe-area-inset-bottom,0));
+  align-items:center;
 }
 html.is-touch #hud .hud-bottom{ display:none; }
-html.is-touch #hud .bar{ width:min(240px, 34vw); }
+html.is-touch #hud .bar{ width:min(240px, 40vw); }
+html.is-touch #hud .bars{ align-items:center; }
+html.is-touch #hud .gear{ justify-content:center; }
+html.is-touch #hud .weapons{ justify-content:center; }
+html.is-touch #hud .items{ justify-content:center; flex-wrap:nowrap; max-width:52vw; overflow:hidden; }
 html.is-touch #hud .ammo-box em{ max-width:84px; }
+html.is-touch #hud .killfeed{ margin-top:42px; }   /* تحت أزرار النتائج/ملء الشاشة */
+html.is-touch #hud .chat-live{ bottom:auto; top:86px; }
+html.is-touch #hud .crosshair{ width:36px; height:36px; }
+/* مؤشر معدل الإطارات */
+.match-info .fps{ font-family:var(--display); font-size:11px; color:#9fe8a8; min-width:52px; text-align:center; }
 @media (max-height:400px) and (orientation:landscape){
-  html.is-touch #hud .hud-left,
-  html.is-touch #hud .hud-right{ bottom:max(120px, calc(env(safe-area-inset-bottom,0) + 116px)); }
-  html.is-touch #hud .bar{ width:min(200px, 30vw); height:13px; }
+  html.is-touch #hud .hud-left{ bottom:calc(max(8px, env(safe-area-inset-bottom,0)) + 104px); }
+  html.is-touch #hud .bar{ width:min(200px, 36vw); height:13px; }
   html.is-touch #hud .gear{ font-size:10px; }
+}
+/* تابلت أفقي (ارتفاع ≥ ٥٢٠): مساحات أوسع وأزرار مريحة */
+@media (min-height:520px) and (orientation:landscape) and (pointer:coarse){
+  html.is-touch #hud .hud-left{ bottom:calc(max(10px, env(safe-area-inset-bottom,0)) + 128px); }
+  html.is-touch #hud .bar{ height:18px; }
 }
 
 /* ==========================================================

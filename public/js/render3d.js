@@ -199,10 +199,11 @@ export class Renderer3D {
     this._adaptT = 0;
     const fm = this._frameMs;
     let s = this.renderScale;
-    if (fm > 30 && s > 0.58) s -= 0.16;       // جهاز ضعيف: خفض قوي وسريع للدقة
+    if (fm > 42 && s > 0.5) s -= 0.2;        // جهاز ضعيف جداً (<٢٤fps): هبوط سريع وقوي
+    else if (fm > 30 && s > 0.55) s -= 0.16; // جهاز ضعيف: خفض قوي وسريع للدقة
     else if (fm > 22 && s > 0.62) s -= 0.10; // أبطأ من ~45 إطار/ث
     else if (fm < 14 && s < 1) s += 0.06;    // ارفعها تدريجياً فقط بعد الاستقرار
-    s = Math.max(0.58, Math.min(1, s));
+    s = Math.max(0.5, Math.min(1, s));
     // خفض مسافة التفاصيل أيضاً، لأن خفض الدقة وحده لا يكفي لراسم Canvas.
     const detailTarget = fm > 30 ? 0.68 : fm > 22 ? 0.82 : 1;
     this._perfDetail += (detailTarget - this._perfDetail) * 0.35;
@@ -219,6 +220,9 @@ export class Renderer3D {
     this.activeDrawDist = this.drawDist * (this._perfDetail || 1);
     this.fogNear = this.cfg.fog[0];
     this.fogFar = this.cfg.fog[1];
+    // درجة جديدة: ابدأ المقياس التكيّفي من جديد حتى لا تبقى دقة قديمة منخفضة
+    this.renderScale = 1;
+    this._frameMs = 16;
     this.resize();
   }
   setMode(m) { this.mode = m === 'tps' ? 'tps' : 'fps'; }

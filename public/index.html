@@ -19,6 +19,9 @@
 <!-- كل الموارد محلية ١٠٠٪ — لا CDN ولا خطوط خارجية: شاشة التحميل لا يمكن أن تتوقف على شبكة -->
 <link rel="stylesheet" href="/css/fonts.css" />
 <link rel="stylesheet" href="/css/style.css" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+<link rel="apple-touch-icon" href="/icons/icon-192.png" />
 <script>
   /* =======================================================================
      مُراقب التحميل المُبكر (Fail-safe)
@@ -78,15 +81,15 @@
 </script>
 </head>
 <body>
-<!-- طبقة إجبار الوضع الأفقي على الهواتف -->
+<!-- طبقة منع الوضع العمودي — اللعبة تعمل أفقياً فقط على كل الأجهزة -->
 <div id="rotate-overlay" aria-hidden="true">
   <div class="rotate-card">
     <div class="rotate-phone">📱<span class="rotate-arrow">↻</span></div>
-    <h2>يرجى تدوير الجهاز</h2>
-    <p>اللعبة تعمل بالوضع الأفقي فقط<br><span>قم بتدوير هاتفك أفقياً للمتابعة</span></p>
+    <h2>اللعبة تعمل بالوضع الأفقي فقط</h2>
+    <p id="rotate-msg">قم بتدوير هاتفك أفقياً للمتابعة<br><span>الوضع العمودي غير مدعوم إطلاقاً</span></p>
     <div class="rotate-bar"><i></i></div>
-    <button class="btn-gold" id="btn-rotate-try">حاول قفل الشاشة أفقياً</button>
-    <button class="btn-ghost" id="btn-rotate-anyway">متابعة على أي حال</button>
+    <button class="btn-gold" id="btn-rotate-try">🔄 قفل الشاشة أفقياً + ملء الشاشة</button>
+    <p class="rotate-note" id="rotate-note">لو لم يدور تلقائياً: دوّر الجهاز بيدك 📱↔️</p>
   </div>
 </div>
 <div id="bg-fx"><canvas id="bg-canvas"></canvas><div class="bg-grid"></div><div class="bg-vignette"></div></div>
@@ -375,6 +378,7 @@
         <span class="alive">👤 <b id="hud-alive">50</b></span>
         <span class="tkills">☠️ <b id="hud-kills">0</b></span>
         <span class="mtimer" id="hud-timer">00:00</span>
+        <span class="fps" id="hud-fps" title="معدل الإطارات">60 FPS</span>
         <span class="mode" id="hud-mode">فردي</span>
         <span class="ping" id="hud-ping">--</span>
       </div>
@@ -430,28 +434,31 @@
 
   <div class="chat-live glass hidden" id="chat-live"></div>
 
-  <!-- أزرار اللمس -->
-  <!-- تخطيط اللمس الأفقي: عصا عائمة يسار · نظر ورمي يمين (مثل بابجي/فري فاير) -->
+  <!-- أزرار اللمس — تخطيط أفقي احترافي (مثل بابجي / فري فاير) -->
   <div class="touch hidden" id="touch-ui">
+    <!-- عصا حركة عائمة: تظهر حيث تضع إبهامك -->
     <div class="stick idle" id="stick"><i id="stick-knob"></i><em class="stick-hint">تحرّك</em></div>
-    <!-- عمود أدوات جانبي -->
-    <div class="tcol" id="t-util">
+    <!-- أعلى اليسار: أزرار صغيرة (النتائج + ملء الشاشة) -->
+    <div class="tmini" id="t-mini">
+      <button class="tbtn xs" data-tbtn="score" title="النتائج">📊</button>
+      <button class="tbtn xs" data-tbtn="fs" title="ملء الشاشة">⛶</button>
+    </div>
+    <!-- عمود الأدوات — الحافة اليمنى فوق عنقود القتال -->
+    <div class="tutil" id="t-util">
       <button class="tbtn sm" data-tbtn="pickup" title="التقاط">🎒</button>
+      <button class="tbtn sm" data-tbtn="heal" title="علاج">💊</button>
+      <button class="tbtn sm" data-tbtn="grenade" title="قنبلة">💣</button>
+      <button class="tbtn sm" data-tbtn="skill" title="مهارة">✨</button>
       <button class="tbtn sm" data-tbtn="swap" title="تبديل السلاح">🔀</button>
       <button class="tbtn sm" data-tbtn="car" title="مركبة">🚙</button>
-      <button class="tbtn sm" data-tbtn="heal" title="علاج">💊</button>
-      <button class="tbtn sm" data-tbtn="skill" title="مهارة">✨</button>
-      <button class="tbtn sm" data-tbtn="grenade" title="قنبلة">💣</button>
-      <button class="tbtn sm" data-tbtn="score" title="النتائج">📊</button>
-      <button class="tbtn sm" data-tbtn="fs" title="ملء الشاشة">⛶</button>
     </div>
-    <!-- عنقود الحركة والقتال (أسفل اليمين) -->
+    <!-- عنقود القتال (أسفل اليمين): رمي كبير في الزاوية -->
     <div class="tcluster">
       <button class="tbtn mid" data-tbtn="reload" title="تعبئة">🔄</button>
       <button class="tbtn mid" data-tbtn="jump" title="قفز/تسلّق">🦘</button>
-      <button class="tbtn mid" data-tbtn="crouch" title="انحناء">🧎</button>
-      <button class="tbtn mid" data-tbtn="prone" title="استلقاء">🛌</button>
       <button class="tbtn aim" data-tbtn="aim" title="تصويب">🎯</button>
+      <button class="tbtn mid" data-tbtn="prone" title="استلقاء">🛌</button>
+      <button class="tbtn mid" data-tbtn="crouch" title="انحناء">🧎</button>
       <button class="tbtn fire" data-tbtn="fire" title="إطلاق">🔥</button>
     </div>
     <!-- زر رمي إضافي لليد اليسرى -->
@@ -495,7 +502,7 @@
       <label>صوت المؤثرات <input type="range" id="set-sfx" min="0" max="100" /></label>
       <label>الحساسية <input type="range" id="set-sens" min="20" max="300" /></label>
       <label>الجودة
-        <select id="set-quality"><option value="low">منخفضة</option><option value="medium" selected>متوسطة (موصى بها)</option><option value="high">عالية</option><option value="ultra">فائقة</option></select>
+        <select id="set-quality"><option value="auto" selected>تلقائي حسب جهازك (موصى بها)</option><option value="low">منخفضة</option><option value="medium">متوسطة</option><option value="high">عالية</option><option value="ultra">فائقة</option></select>
       </label>
       <label>منظور اللعب
         <select id="set-view">
@@ -570,70 +577,116 @@
 <div class="modal-wrap hidden" id="modal-wrap"><div class="modal glass" id="modal-body"></div></div>
 
 <script>
-  // ========= إدارة الوضع الأفقي ودعم كل الأجهزة =========
-  (function(){
-    var overlay = null, bypass = false;
-    var isCoarse = false;
-    try { isCoarse = window.matchMedia('(pointer: coarse)').matches; } catch(e){}
-    // ملاحظة: حجم النافذة وحده لا يجعل الجهاز هاتفاً (كثير من نوافذ الكمبيوتر أقصر من ٩٠٠ بكسل)
-    // لذلك نعتمد على اللمس/مؤشر coarse/وكيل المستخدم فقط — وإلا حُجب الكمبيوتر بطبقة «دوّر الجهاز».
-    var hasTouch = false;
-    try { hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0); } catch(e){}
-    function isMobileish(){ return isCoarse || (hasTouch && Math.min(innerWidth, innerHeight) <= 900) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent); }
-    function isPortrait(){ return innerHeight > innerWidth; }
-    function needsLandscape(){ return !bypass && isMobileish() && isPortrait() && Math.max(innerWidth, innerHeight) < 1100; }
-    function update(){
-      if(!overlay) overlay = document.getElementById('rotate-overlay');
-      if(!overlay) return;
-      var need = needsLandscape();
-      overlay.classList.toggle('visible', need);
-      document.documentElement.classList.toggle('force-landscape', need);
-      document.body.classList.toggle('portrait-blocked', need);
-      try { if(need) document.body.style.overflow='hidden'; else document.body.style.overflow=''; } catch(e){}
-    }
-    async function tryLock(){
+  /* =======================================================================
+     مدير الوضع الأفقي — اللعبة لا تعمل عمودياً إطلاقاً على أي جهاز
+     • أي شاشة عمودية (هاتف/تابلت/نافذة ضيقة) تُحجب بطبقة ملء الشاشة
+     • محاولة قفل الاتجاه أفقياً + ملء الشاشة تلقائياً عند أول تفاعل (أندرويد)
+     • تجميد حلقة اللعب نهائياً أثناء الحجب (window.__orkPortraitBlocked)
+     ======================================================================= */
+  (function () {
+    var overlay = null, msgEl = null, noteEl = null, lastState = null, lockedOnce = false;
+    var isCoarse = false, hasTouch = false;
+    try { isCoarse = window.matchMedia('(pointer: coarse)').matches; } catch (e) { }
+    try { hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0); } catch (e) { }
+    function uaMobile() { return /Mobi|Android|iPhone|iPad|iPod|Mobile|Silk|Kindle/i.test(navigator.userAgent || ''); }
+    function isTouchDevice() { return isCoarse || hasTouch || uaMobile(); }
+
+    /* أبعاد العرض الفعلية (visualViewport أدق على الهواتف مع أشرطة النظام) */
+    function viewport() {
+      var w = window.innerWidth, h = window.innerHeight;
       try {
-        if(screen.orientation && screen.orientation.lock){
-          if(document.visibilityState === 'visible' && needsLandscape()){
-            await screen.orientation.lock('landscape').catch(function(){});
-          } else if(!needsLandscape() && screen.orientation.type && screen.orientation.type.startsWith('portrait')){
-            // لا نلغي القفل تلقائياً — نترك المستخدم
-          }
-        }
-      } catch(e){}
-      // محاولة ملء الشاشة على الهواتف الأفقية
-      try {
-        if(isMobileish() && !isPortrait() && document.documentElement.requestFullscreen && !document.fullscreenElement){
-          // لا نطلب تلقائياً بدون تفاعل — فقط بعد ضغطة
-        }
-      } catch(e){}
+        if (window.visualViewport) { w = window.visualViewport.width; h = window.visualViewport.height; }
+      } catch (e) { }
+      return { w: Math.round(w), h: Math.round(h) };
     }
-    window.__orkTryLandscape = tryLock;
-    window.addEventListener('resize', update);
-    window.addEventListener('orientationchange', function(){ setTimeout(update, 200); setTimeout(tryLock, 400); });
-    document.addEventListener('DOMContentLoaded', update);
-    setInterval(update, 600);
-    // حاول القفل عند أول تفاعل
-    var once = function(){ tryLock(); update(); };
-    window.addEventListener('touchend', once, {once:true});
-    window.addEventListener('click', once);
-    document.addEventListener('click', function(e){
-      var any = e.target.closest('#btn-rotate-anyway');
-      if(any){ e.preventDefault(); bypass = true; update(); return; }
-      var btn = e.target.closest('#btn-rotate-try');
-      if(!btn) return;
+    /* عمودي = الارتفاع أكبر من العرض بهامش ٢٪ (يمنع الرفرفة على الشاشات شبه المربعة) */
+    function isPortrait() {
+      var v = viewport();
+      return v.h > v.w * 1.02;
+    }
+
+    function update() {
+      if (!overlay) {
+        overlay = document.getElementById('rotate-overlay');
+        msgEl = document.getElementById('rotate-msg');
+        noteEl = document.getElementById('rotate-note');
+      }
+      var blocked = isPortrait();
+      window.__orkPortraitBlocked = blocked;
+      try {
+        if (overlay) overlay.classList.toggle('visible', blocked);
+        document.documentElement.classList.toggle('force-landscape', blocked);
+        document.body.classList.toggle('portrait-blocked', blocked);
+        document.body.style.overflow = blocked ? 'hidden' : '';
+      } catch (e) { }
+      if (blocked !== lastState) {
+        lastState = blocked;
+        if (blocked) {
+          /* نص مناسب للجهاز: هاتف أم نافذة كمبيوتر ضيقة */
+          try {
+            if (msgEl) {
+              msgEl.innerHTML = isTouchDevice()
+                ? 'قم بتدوير هاتفك أفقياً للمتابعة<br><span>الوضع العمودي غير مدعوم إطلاقاً</span>'
+                : 'وسّع نافذة المتصفح أو دوّر الشاشة<br><span>اللعبة مصممة للوضع الأفقي فقط</span>';
+            }
+            if (noteEl) noteEl.style.display = isTouchDevice() ? '' : 'none';
+          } catch (e) { }
+          /* أغلق أي تركيز (لوحة مفاتيح مفتوحة) وأوقف أي تمرير */
+          try { if (document.activeElement && document.activeElement.blur) document.activeElement.blur(); } catch (e) { }
+        }
+      }
+    }
+
+    /* محاولة قفل الاتجاه أفقياً — تحتاج ملء الشاشة على أندرويد كروم */
+    async function tryLock() {
+      try {
+        if (screen.orientation && screen.orientation.lock && document.visibilityState === 'visible') {
+          await screen.orientation.lock('landscape').catch(function () { });
+          lockedOnce = true;
+        }
+      } catch (e) { }
+      setTimeout(update, 150); setTimeout(update, 600);
+    }
+    /* ملء الشاشة ثم القفل الأفقي (يحتاج إيماءة مستخدم) */
+    async function goLandscape() {
+      try {
+        if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+          await document.documentElement.requestFullscreen().catch(function () { });
+        }
+      } catch (e) { }
+      await tryLock();
+    }
+    window.__orkTryLandscape = function () {
+      if (isPortrait()) return goLandscape();     // عمودي: حاول التدوير التلقائي
+      return tryLock();                           // أفقي: ثبّت الاتجاه فقط
+    };
+
+    /* زر الطبقة: قفل أفقي + ملء شاشة */
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest('#btn-rotate-try') : null;
+      if (!btn) return;
       e.preventDefault();
-      tryLock();
-      // حاول ملء الشاشة أيضاً
-      try {
-        if(document.documentElement.requestFullscreen && !document.fullscreenElement){
-          document.documentElement.requestFullscreen().catch(function(){});
-        }
-      } catch(e){}
-      setTimeout(update, 300);
+      goLandscape();
     });
-    // مراقبة تغير DPR عند تدوير بعض الأجهزة
-    try { window.visualViewport && window.visualViewport.addEventListener('resize', update); } catch(e){}
+
+    /* مراقبة كل تغيّر للاتجاه/الحجم على كل الأنظمة */
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', function () { setTimeout(update, 100); setTimeout(update, 350); });
+    document.addEventListener('DOMContentLoaded', update);
+    try { window.visualViewport && window.visualViewport.addEventListener('resize', update); } catch (e) { }
+    /* فحص دوري خفيف: بعض المتصفحات لا تطلق resize عند كل الحالات */
+    setInterval(update, 500);
+
+    /* أول لمسة/نقرة: حاول القفل الأفقي تلقائياً (يعمل على أندرويد).
+       ملء الشاشة التلقائي للأجهزة اللمسية فقط — الكمبيوتر لا يُجبر عليه. */
+    function firstGesture() {
+      if (lockedOnce) return;
+      if (!isTouchDevice()) { tryLock(); return; }
+      if (document.fullscreenElement || !document.documentElement.requestFullscreen) { tryLock(); return; }
+      goLandscape();
+    }
+    window.addEventListener('touchend', firstGesture, { once: true, passive: true });
+    window.addEventListener('click', firstGesture, { once: true });
     update();
   })();
 </script>

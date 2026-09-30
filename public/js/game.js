@@ -163,7 +163,8 @@ export class Session {
     $('hud-mode').textContent = (MODES.find(m => m.id === this.mode) || MODES[0]).ar;
     $('tdm-score').classList.toggle('hidden', this.mode !== 'tdm');
     $('pause').classList.add('hidden');
-    if (this.input.isTouch) $('touch-ui').classList.remove('hidden');
+    // أزرار اللمس: للجهاز اللمسي مع احترام اختيار اللاعب في الإعدادات
+    $('touch-ui')?.classList.toggle('hidden', !(this.input.isTouch && this.app?.settings?.touch !== false));
     this.updateLookHint();
     this.drawDropMap();
   }
@@ -780,8 +781,8 @@ export class Session {
     // لوحة النتائج
     if (!this.input.keys.has('Tab') && !this.input.sbOpen) $('scoreboard').classList.add('hidden');
     else this.showScoreboard();
-    // أزرار اللمس
-    if (this.input.isTouch) $('touch-ui').classList.remove('hidden');
+    // أزرار اللمس: للجهاز اللمسي مع احترام اختيار اللاعب في الإعدادات
+    $('touch-ui')?.classList.toggle('hidden', !(this.input.isTouch && this.app?.settings?.touch !== false));
   }
   drawCompass(me) {
     if (!me) return;
