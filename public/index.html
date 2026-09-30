@@ -394,20 +394,31 @@
   <div class="chat-live glass hidden" id="chat-live"></div>
 
   <!-- أزرار اللمس -->
+  <!-- تخطيط اللمس الأفقي: عصا عائمة يسار · نظر ورمي يمين (مثل بابجي/فري فاير) -->
   <div class="touch hidden" id="touch-ui">
-    <div class="stick" id="stick"><i id="stick-knob"></i></div>
-    <div class="tbtns">
-      <button class="tbtn fire" data-tbtn="fire">🔥</button>
-      <button class="tbtn" data-tbtn="aim">🎯</button>
-      <button class="tbtn" data-tbtn="jump">🦵</button>
-      <button class="tbtn" data-tbtn="crouch">⬇️</button>
-      <button class="tbtn" data-tbtn="reload">🔄</button>
-      <button class="tbtn" data-tbtn="heal">💊</button>
-      <button class="tbtn" data-tbtn="skill">✨</button>
-      <button class="tbtn" data-tbtn="pickup">🎒</button>
-      <button class="tbtn" data-tbtn="swap">🔀</button>
-      <button class="tbtn" data-tbtn="car">🚙</button>
+    <div class="stick idle" id="stick"><i id="stick-knob"></i><em class="stick-hint">تحرّك</em></div>
+    <!-- عمود أدوات جانبي -->
+    <div class="tcol" id="t-util">
+      <button class="tbtn sm" data-tbtn="pickup" title="التقاط">🎒</button>
+      <button class="tbtn sm" data-tbtn="swap" title="تبديل السلاح">🔀</button>
+      <button class="tbtn sm" data-tbtn="car" title="مركبة">🚙</button>
+      <button class="tbtn sm" data-tbtn="heal" title="علاج">💊</button>
+      <button class="tbtn sm" data-tbtn="skill" title="مهارة">✨</button>
+      <button class="tbtn sm" data-tbtn="grenade" title="قنبلة">💣</button>
+      <button class="tbtn sm" data-tbtn="score" title="النتائج">📊</button>
+      <button class="tbtn sm" data-tbtn="fs" title="ملء الشاشة">⛶</button>
     </div>
+    <!-- عنقود الحركة والقتال (أسفل اليمين) -->
+    <div class="tcluster">
+      <button class="tbtn mid" data-tbtn="reload" title="تعبئة">🔄</button>
+      <button class="tbtn mid" data-tbtn="jump" title="قفز/تسلّق">🦘</button>
+      <button class="tbtn mid" data-tbtn="crouch" title="انحناء">🧎</button>
+      <button class="tbtn mid" data-tbtn="prone" title="استلقاء">🛌</button>
+      <button class="tbtn aim" data-tbtn="aim" title="تصويب">🎯</button>
+      <button class="tbtn fire" data-tbtn="fire" title="إطلاق">🔥</button>
+    </div>
+    <!-- زر رمي إضافي لليد اليسرى -->
+    <button class="tbtn fire2" data-tbtn="fire" title="إطلاق">🔥</button>
   </div>
 
   <div class="pause hidden" id="pause">
@@ -457,7 +468,11 @@
           <option value="top">ثنائي الأبعاد — من الأعلى (كلاسيكي)</option>
         </select>
       </label>
+      <label>حساسية النظر باللمس <input type="range" id="set-tsens" min="20" max="300" /></label>
       <label class="check"><input type="checkbox" id="set-autofire" /> إطلاق تلقائي عند التصويب</label>
+      <label class="check"><input type="checkbox" id="set-aimassist" checked /> مساعدة التصويب (هاتف)</label>
+      <label class="check"><input type="checkbox" id="set-vibrate" checked /> اهتزاز الأزرار (هاتف)</label>
+      <label class="check"><input type="checkbox" id="set-tapfire" /> نقرة على جهة النظر = إطلاق</label>
       <label class="check"><input type="checkbox" id="set-blood" checked /> تأثيرات الدم</label>
       <label class="check"><input type="checkbox" id="set-touch" /> أزرار اللمس (للهاتف)</label>
     </div>

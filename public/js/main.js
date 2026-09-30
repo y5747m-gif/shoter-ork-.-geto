@@ -30,7 +30,7 @@ class App {
     this.session = new Session(this);
     this.quality = 'high';
     try { this.quality = localStorage.getItem('orkz_quality') || 'high'; } catch {}
-    const defSettings = { sfx: 0.8, music: 0.45, sens: 1, autofire: false, blood: true, touch: false };
+    const defSettings = { sfx: 0.8, music: 0.45, sens: 1, tsens: 1, autofire: false, blood: true, touch: false, aimassist: true, vibrate: true, tapfire: false, view: 'fps' };
     try {
       const saved = JSON.parse(localStorage.getItem('orkz_settings') || '{}');
       this.settings = { ...defSettings, ...saved };
@@ -307,6 +307,14 @@ class App {
     if (sensEl) sensEl.oninput = (e) => { this.settings.sens = +e.target.value / 100; if (this.session?.input) this.session.input.sens = this.settings.sens; };
     const qEl = $('set-quality');
     if (qEl) qEl.onchange = (e) => { this.quality = e.target.value; this.session.renderer.setQuality(this.quality); };
+    const tsEl = $('set-tsens');
+    if (tsEl) tsEl.oninput = (e) => { this.settings.tsens = +e.target.value / 100; if (this.session?.input) this.session.input.touchLookSens = this.settings.tsens; };
+    const aaEl = $('set-aimassist');
+    if (aaEl) aaEl.onchange = (e) => { this.settings.aimassist = e.target.checked; if (this.session?.input) this.session.input.aimAssist = e.target.checked; };
+    const vbEl = $('set-vibrate');
+    if (vbEl) vbEl.onchange = (e) => { this.settings.vibrate = e.target.checked; if (this.session?.input) this.session.input.vibrate = e.target.checked; };
+    const tfEl = $('set-tapfire');
+    if (tfEl) tfEl.onchange = (e) => { this.settings.tapfire = e.target.checked; if (this.session?.input) this.session.input.tapToFire = e.target.checked; };
     const afEl = $('set-autofire');
     if (afEl) afEl.onchange = (e) => { this.settings.autofire = e.target.checked; if (this.session?.input) this.session.input.autoFire = e.target.checked; };
     const tchEl = $('set-touch');
@@ -335,12 +343,20 @@ class App {
     if ($('set-music')) $('set-music').value = (this.settings.music ?? 0.45) * 100;
     if ($('set-sens')) $('set-sens').value = (this.settings.sens ?? 1) * 100;
     if ($('set-quality')) $('set-quality').value = this.quality;
+    if ($('set-tsens')) $('set-tsens').value = (this.settings.tsens ?? 1) * 100;
     if ($('set-autofire')) $('set-autofire').checked = !!this.settings.autofire;
+    if ($('set-aimassist')) $('set-aimassist').checked = this.settings.aimassist !== false;
+    if ($('set-vibrate')) $('set-vibrate').checked = this.settings.vibrate !== false;
+    if ($('set-tapfire')) $('set-tapfire').checked = !!this.settings.tapfire;
     if ($('set-touch')) $('set-touch').checked = !!this.settings.touch;
     if ($('set-blood')) $('set-blood').checked = this.settings.blood !== false;
     if (this.session?.input) {
       this.session.input.autoFire = !!this.settings.autofire;
       this.session.input.sens = this.settings.sens ?? 1;
+      this.session.input.touchLookSens = this.settings.tsens ?? 1;
+      this.session.input.vibrate = this.settings.vibrate !== false;
+      this.session.input.aimAssist = this.settings.aimassist !== false;
+      this.session.input.tapToFire = !!this.settings.tapfire;
     }
     if (this.session?.renderer) {
       this.session.renderer.bloodFx = this.settings.blood !== false;
