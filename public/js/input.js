@@ -24,11 +24,20 @@ export class Input2 {
     this.look = { yaw: 0, pitch: 0 };
     this.fps = true;              // هل نحن في وضع ثلاثي الأبعاد؟
     this.locked = false;          // هل المؤشر مقفول؟
-    this.pitchLimit = 0.42;       // ±٢٤° تقريباً (المحاكاة ثنائية الأبعاد في الأساس)
+    this.pitchLimit = 0.62;       // ±٣٥° تقريباً: مجال رؤية رأسي أوسع في الثري دي
     this._touchLook = null;
+    /* ---- إعدادات اللمس ---- */
+    this.touchLookSens = 1;       // حساسية النظر باللمس (من الإعدادات)
+    this.vibrate = true;          // اهتزاز خفيف عند الضغط
+    this.tapToFire = false;       // نقرة على جهة النظر = طلقة
+    this.sbOpen = false;          // لوحة النتائج مفتوحة (زر اللمس)
+    this.lookIds = new Map();
+    this.fireDrag = null;
     this._bind();
   }
   get isTouch() { return this.touchMode; }
+  /** معامل تحويل بكسلات السحب إلى حركة نظر (يراعي دقّة الشاشة والحساسية) */
+  get touchLookScale() { return 2.0 * (this.touchLookSens || 1); }
 
   _bind() {
     if (typeof window === 'undefined') return;
@@ -65,71 +74,163 @@ export class Input2 {
     }
     addEventListener('wheel', e => { this.actions.push({ a: 'swapDelta', v: Math.sign(e.deltaY) }); }, { passive: true });
 
-    // لمس
+    // ===================== اللمس (تخطيط أفقي احترافي) =====================
+    // يسار الشاشة: عصا حركة «عائمة» تظهر مكان إصبعك.
+    // يمين الشاشة: سحب للنظر (تعدد لمسات) + أزرار الرمي والحركة.
+    this._bindTouch();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* اللمس                                                               */
+  /* ------------------------------------------------------------------ */
+  _bindTouch() {
     const stick = document.getElementById('stick');
     const knob = document.getElementById('stick-knob');
-    if (stick) {
-      const onStart = (e) => {
-        const t = e.changedTouches ? e.changedTouches[0] : e;
-        const r = stick.getBoundingClientRect();
-        this.stick.active = true; this.stick.id = t.identifier ?? 'mouse';
-        this.stick.cx = r.left + r.width / 2; this.stick.cy = r.top + r.height / 2;
-        this.stick.dx = 0; this.stick.dy = 0;
-        knob.style.transform = 'translate(0,0)';
-      };
-      stick.addEventListener('touchstart', onStart, { passive: true });
-      stick.addEventListener('mousedown', onStart);
-      const onMove = (e) => {
-        if (!this.stick.active) return;
-        const list = e.changedTouches || [e];
-        for (const t of list) {
-          if ((t.identifier ?? 'mouse') !== this.stick.id) continue;
-          const dx = t.clientX - this.stick.cx, dy = t.clientY - this.stick.cy;
-          const m = Math.min(1, Math.hypot(dx, dy) / 60);
-          const a = Math.atan2(dy, dx);
-          this.stick.dx = Math.cos(a) * m; this.stick.dy = Math.sin(a) * m;
-          knob.style.transform = `translate(${this.stick.dx * 44}px, ${this.stick.dy * 44}px)`;
+    this.stickEl = stick; this.knobEl = knob;
+    this.lookIds = new Map();          // أصابع النظر (تعدد لمسات)
+    this.fireDrag = null;              // إصبع بدأ من زر الرمي ويستمر بالنظر
+    const RADIUS = 62;
+
+    const placeStick = (x, y) => {
+      if (!stick) return;
+      stick.classList.remove('idle');
+      const half = (stick.offsetWidth || 150) / 2;
+      stick.style.left = (x - half) + 'px';
+      stick.style.top = (y - half) + 'px';
+      stick.style.right = 'auto';
+      stick.style.bottom = 'auto';
+    };
+    const resetStick = () => {
+      this.stick.active = false; this.stick.id = null;
+      this.stick.dx = 0; this.stick.dy = 0;
+      if (knob) knob.style.transform = 'translate(0,0)';
+      if (stick) { stick.classList.add('idle'); stick.style.left = ''; stick.style.top = ''; stick.style.right = ''; stick.style.bottom = ''; }
+    };
+    this._resetStick = resetStick;
+
+    const moveStick = (x, y) => {
+      const dx = x - this.stick.cx, dy = y - this.stick.cy;
+      const len = Math.hypot(dx, dy);
+      const m = Math.min(1, len / RADIUS);
+      const a = Math.atan2(dy, dx);
+      this.stick.dx = Math.cos(a) * m; this.stick.dy = Math.sin(a) * m;
+      if (knob) knob.style.transform = `translate(${this.stick.dx * 46}px, ${this.stick.dy * 46}px)`;
+    };
+
+    const startStick = (x, y, id) => {
+      this.stick.active = true; this.stick.id = id;
+      this.stick.cx = x; this.stick.cy = y;
+      this.stick.dx = 0; this.stick.dy = 0;
+      placeStick(x, y);
+      if (knob) knob.style.transform = 'translate(0,0)';
+    };
+
+    /** منطقة العصا: النصف الأيسر السفلي (نترك الأعلى للخريطة المصغّرة والواجهة) */
+    const inMoveZone = (x, y) => x < innerWidth * 0.46 && y > innerHeight * 0.22;
+
+    const target = this.cv || (typeof document !== 'undefined' ? document.body : null);
+    if (target && target.addEventListener) {
+      target.addEventListener('touchstart', (e) => {
+        this.touchMode = true;
+        for (const t of e.changedTouches) {
+          const id = t.identifier;
+          if (!this.stick.active && inMoveZone(t.clientX, t.clientY)) {
+            startStick(t.clientX, t.clientY, id);
+          } else {
+            this.mouse.x = t.clientX; this.mouse.y = t.clientY;
+            if (this.fps) this.lookIds.set(id, { x: t.clientX, y: t.clientY, moved: 0, t: Date.now() });
+            else { this.mouse.down = true; this.touchAimId = id; }
+          }
+        }
+      }, { passive: true });
+
+      target.addEventListener('touchmove', (e) => {
+        for (const t of e.changedTouches) {
+          const id = t.identifier;
+          if (this.stick.active && id === this.stick.id) { moveStick(t.clientX, t.clientY); continue; }
+          const L = this.lookIds.get(id);
+          if (L) {
+            const dx = t.clientX - L.x, dy = t.clientY - L.y;
+            L.moved += Math.abs(dx) + Math.abs(dy);
+            this.lookBy(dx * this.touchLookScale, dy * this.touchLookScale);
+            L.x = t.clientX; L.y = t.clientY;
+            continue;
+          }
+          if (!this.fps && id === this.touchAimId) { this.mouse.x = t.clientX; this.mouse.y = t.clientY; }
+        }
+      }, { passive: true });
+
+      const endTouch = (e) => {
+        for (const t of e.changedTouches) {
+          const id = t.identifier;
+          if (this.stick.active && id === this.stick.id) { resetStick(); continue; }
+          const L = this.lookIds.get(id);
+          if (L) {
+            // نقرة قصيرة على جهة النظر = طلقة سريعة (اختياري عبر الإعدادات)
+            if (this.tapToFire && L.moved < 14 && Date.now() - L.t < 260) {
+              this.touchBtns.fire = true;
+              setTimeout(() => { this.touchBtns.fire = false; }, 110);
+            }
+            this.lookIds.delete(id);
+            continue;
+          }
+          if (id === this.touchAimId) { this.mouse.down = false; this.touchAimId = null; }
         }
       };
-      addEventListener('touchmove', onMove, { passive: true });
-      addEventListener('mousemove', onMove);
-      const onEnd = () => { this.stick.active = false; this.stick.dx = 0; this.stick.dy = 0; knob.style.transform = 'translate(0,0)'; };
-      addEventListener('touchend', onEnd); addEventListener('mouseup', onEnd);
+      target.addEventListener('touchend', endTouch);
+      target.addEventListener('touchcancel', endTouch);
     }
+
+    // أزرار اللمس: ضغط/إفلات + إمكانية «السحب من زر الرمي للنظر» (رمي وتصويب بإصبع واحد)
     for (const b of document.querySelectorAll('.tbtn')) {
       const name = b.dataset.tbtn;
-      const press = (e) => { e.preventDefault(); this.touchBtns[name] = true; this.touchMode = true; this.onTouchBtn(name, true); };
-      const release = (e) => { e.preventDefault(); this.touchBtns[name] = false; this.onTouchBtn(name, false); };
+      const press = (e) => {
+        if (e.cancelable) e.preventDefault();
+        this.touchMode = true;
+        this.touchBtns[name] = true;
+        b.classList.add('on');
+        this.haptic(name === 'fire' ? 8 : 12);
+        this.onTouchBtn(name, true);
+        if (e.changedTouches && (name === 'fire' || name === 'aim')) {
+          const t = e.changedTouches[0];
+          this.fireDrag = { id: t.identifier, x: t.clientX, y: t.clientY, btn: name };
+        }
+      };
+      const release = (e) => {
+        if (e.cancelable) e.preventDefault();
+        this.touchBtns[name] = false;
+        b.classList.remove('on');
+        if (this.fireDrag && (name === 'fire' || name === 'aim')) this.fireDrag = null;
+        this.onTouchBtn(name, false);
+      };
       b.addEventListener('touchstart', press, { passive: false });
       b.addEventListener('touchend', release);
+      b.addEventListener('touchcancel', release);
       b.addEventListener('mousedown', press);
       b.addEventListener('mouseup', release);
+      b.addEventListener('mouseleave', (e) => { if (this.touchBtns[name]) release(e); });
+      // سحب من الزر = تحريك النظر بنفس الإصبع مع استمرار الرمي
+      b.addEventListener('touchmove', (e) => {
+        const d = this.fireDrag;
+        if (!d) return;
+        for (const t of e.changedTouches) {
+          if (t.identifier !== d.id) continue;
+          this.lookBy((t.clientX - d.x) * this.touchLookScale, (t.clientY - d.y) * this.touchLookScale);
+          d.x = t.clientX; d.y = t.clientY;
+        }
+      }, { passive: true });
     }
+
     const firstTouch = () => { this.touchMode = true; window.removeEventListener('touchstart', firstTouch); };
     addEventListener('touchstart', firstTouch, { passive: true });
-    // لمس الشاشة: سحب = النظر حولك (ثلاثي الأبعاد)، وفي الوضع القديم = تصويب/رمي
-    this.cv.addEventListener('touchstart', (e) => {
-      for (const t of e.changedTouches) {
-        if (t.clientX > innerWidth * 0.35) {
-          this.mouse.x = t.clientX; this.mouse.y = t.clientY;
-          if (this.fps) { this.touchAimId = t.identifier; this._touchLook = { x: t.clientX, y: t.clientY }; }
-          else { this.mouse.down = true; this.touchAimId = t.identifier; }
-        }
-      }
-    }, { passive: true });
-    this.cv.addEventListener('touchmove', (e) => {
-      for (const t of e.changedTouches) {
-        if (t.identifier !== this.touchAimId) continue;
-        if (this.fps) {
-          if (this._touchLook) this.lookBy((t.clientX - this._touchLook.x) * 2.2, (t.clientY - this._touchLook.y) * 2.2);
-          this._touchLook = { x: t.clientX, y: t.clientY };
-        } else { this.mouse.x = t.clientX; this.mouse.y = t.clientY; }
-      }
-    }, { passive: true });
-    const up = (e) => { for (const t of e.changedTouches) if (t.identifier === this.touchAimId) { this.mouse.down = false; this.touchAimId = null; this._touchLook = null; } };
-    this.cv.addEventListener('touchend', up);
-    this.cv.addEventListener('touchcancel', up);
   }
+
+  /** اهتزاز خفيف عند الضغط (إن دعمه الجهاز) */
+  haptic(ms) {
+    if (!this.vibrate) return;
+    try { navigator.vibrate && navigator.vibrate(ms); } catch { }
+  }
+
   /** تحريك النظر (ماوس/لمس) */
   lookBy(dx, dy) {
     const s = 0.0022 * (this.sens || 1);
@@ -155,7 +256,11 @@ export class Input2 {
       case 'swap': this.actions.push({ a: 'swapToggle' }); break;
       case 'car': this.actions.push({ a: 'vehicleToggle' }); break;
       case 'jump': this.actions.push({ a: 'jumpHurdle' }); break;
-      case 'crouch': this.actions.push({ a: 'crouchToggle' }); break;
+      case 'crouch': this.crouchToggle = !this.crouchToggle; this.proneToggle = false; break;
+      case 'prone': this.proneToggle = !this.proneToggle; this.crouchToggle = false; break;
+      case 'grenade': this.actions.push({ a: 'grenadeToggle' }); break;
+      case 'score': this.sbOpen = !this.sbOpen; break;
+      case 'fs': this.actions.push({ a: 'fullscreen' }); break;
       default: break;
     }
   }

@@ -16,6 +16,8 @@ import { WEAPONS, SKINS, CHARACTERS, RARITY, ARMORS, ATTACHMENTS } from '/shared
 /** كل ٤٠ وحدة عالم = متر واحد (سرعة اللاعب ٢٢٥ وحدة/ث ≈ ٥٫٦ م/ث أي عدو واقعي) */
 export const M = 40;
 const IM = 1 / M;
+/** أقصى ميل للنظر لأعلى/أسفل (راديان) — مجال رؤية رأسي أوسع في الوضع ثلاثي الأبعاد */
+export const PITCH_MAX = 0.62;
 /** ارتفاع العين (بالمتر) لكل وضعية */
 export const EYE = { stand: 1.66, crouch: 1.0, prone: 0.36, car: 1.95, air: 1.2 };
 /** ارتفاع جدران وأسقف البيوت بالوحدات */
@@ -82,10 +84,23 @@ const LX = -0.42, LY = -0.34, LZ = 0.84;
 
 /* مستويات تفاصيل حسب الجودة */
 const QUALITY = {
-  low:    { dpr: 1,    dist: 2600, fog: [1500, 2900],  trees: 1, detail: 0, parts: 240 },
-  medium: { dpr: 1.25, dist: 3600, fog: [2200, 4100],  trees: 1, detail: 1, parts: 500 },
-  high:   { dpr: 2,    dist: 4600, fog: [2800, 5400], trees: 1, detail: 1, parts: 800 },
-  ultra:  { dpr: 2,    dist: 5800, fog: [3500, 6600], trees: 1, detail: 1, parts: 1200 },
+  low:    { dpr: 1,    dist: 2600, fog: [1500, 2900],  trees: 1, detail: 0, parts: 240,  weather: 0,   clouds: 0, shadows: 0 },
+  medium: { dpr: 1.25, dist: 3600, fog: [2200, 4100],  trees: 1, detail: 1, parts: 500,  weather: 70,  clouds: 5, shadows: 1 },
+  high:   { dpr: 2,    dist: 4600, fog: [2800, 5400], trees: 1, detail: 1, parts: 800,  weather: 130, clouds: 8, shadows: 1 },
+  ultra:  { dpr: 2,    dist: 5800, fog: [3500, 6600], trees: 1, detail: 1, parts: 1200, weather: 200, clouds: 11, shadows: 1 },
+};
+
+/* ============================= الطقس لكل خريطة ============================= */
+/**
+ * لكل خريطة جوّها الخاص: مطر المدينة، ثلج القمة، جمرات البركان، غبار الصحراء، وحبوب اللقاح في الجزيرة.
+ * الجسيمات تُحاكى حول الكاميرا (إحداثيات نسبية) فتبدو مجسّمة بلا كلفة كبيرة.
+ */
+const WEATHER = {
+  neo_city:  { kind: 'rain',   color: 'rgba(170,210,255,.70)', fall: 1500, drift: 90,  size: 1.5, len: 26, radius: 900,  sway: 0 },
+  snow_peak: { kind: 'snow',   color: 'rgba(255,255,255,.85)', fall: 120,  drift: 55,  size: 2.6, len: 0,  radius: 950,  sway: 34 },
+  volcano:   { kind: 'ember',  color: 'rgba(255,150,60,.85)',  fall: -110, drift: 70,  size: 2.2, len: 0,  radius: 900,  sway: 26 },
+  sand_storm:{ kind: 'dust',   color: 'rgba(226,196,140,.55)', fall: 40,   drift: 420, size: 2.0, len: 12, radius: 1000, sway: 18 },
+  ork_island:{ kind: 'pollen', color: 'rgba(214,236,170,.55)', fall: 34,   drift: 60,  size: 1.8, len: 0,  radius: 900,  sway: 30 },
 };
 
 /* أوجه الصندوق: ٨ رؤوس مرتّبة بالبتات (x=1, y=2, z=4) */
@@ -123,6 +138,12 @@ export class Renderer3D {
     this._fogKey = '';
     this.recoil = 0;
     this.hitFlash = 0;
+    /** الطقس والغيوم والضوء الديناميكي (وميض الفوهة/الانفجارات) */
+    this.weather = [];
+    this.weatherKey = '';
+    this.muzzleLight = 0;
+    this.sprintBlend = 0;
+    this.lean = 0;
     this.stats = { faces: 0, objects: 0, drawn: 0 };
     this.fogColor = '#0f1a24';
     this.fogNear = 1200; this.fogFar = 4400;
@@ -397,6 +418,8 @@ export class Renderer3D {
     this._drawFaces(ctx);
     this._drawTracers(ctx, view);
     this._drawParticles(ctx);
+    this._updateWeather(dt);
+    this._drawWeather(ctx);
     this._drawZoneRing(ctx, view);
     this._drawTags(ctx, view);
     this._drawScreenFx(ctx, view);
@@ -424,11 +447,12 @@ export class Renderer3D {
     // نعومة الدوران (أهم في منظور الشخص الثالث)
     const k = this.mode === 'fps' ? Math.min(1, dt * 40) : Math.min(1, dt * 12);
     cam.yaw += shortAngle(wantYaw - cam.yaw) * k;
-    cam.pitch += (clamp(wantPitch, -0.42, 0.42) - cam.pitch) * k;
+    cam.pitch += (clamp(wantPitch, -PITCH_MAX, PITCH_MAX) - cam.pitch) * k;
     // اهتزاز/ارتداد
     cam.shake *= Math.pow(0.0022, dt);
     this.recoil *= Math.pow(0.0009, dt);
     this.hitFlash = Math.max(0, this.hitFlash - dt * 3);
+    this.muzzleLight = Math.max(0, this.muzzleLight - dt * 6);
     // تأرجح المشي
     const speed = Math.hypot(target.vx || 0, target.vy || 0);
     const moving = speed > 25 && !target.pr;
@@ -441,7 +465,10 @@ export class Renderer3D {
     const adsWant = view.ads ? 1 : 0;
     cam.ads += (adsWant - cam.ads) * Math.min(1, dt * 14);
     const scope = view.scope > 1 ? view.scope : 1;
-    const baseFov = 90 - 26 * cam.ads * (scope > 2 ? 1 : 1) - Math.min(52, (scope - 1) * 16) * cam.ads;
+    // ركلة مجال الرؤية عند الجري: إحساس بالسرعة (تُلغى عند التصويب)
+    const sprinting = (view.sprint && moving && !view.ads) ? 1 : 0;
+    this.sprintBlend += (sprinting - this.sprintBlend) * Math.min(1, dt * 5);
+    const baseFov = 90 + 8 * this.sprintBlend - 26 * cam.ads * (scope > 2 ? 1 : 1) - Math.min(52, (scope - 1) * 16) * cam.ads;
     cam.fovT = baseFov;
     cam.fovX += (baseFov - cam.fovX) * Math.min(1, dt * 16);
     // الموقع
@@ -465,7 +492,7 @@ export class Renderer3D {
       cam.x = bx + shX; cam.y = by + shY; cam.z = bz;
       cam.roll = roll * 0.5;
       // انظر نحو جسم اللاعب (لأسفل قليلاً) مع حرية بسيطة للماوس
-      cam.pitch = -0.13 + clamp(wantPitch, -0.3, 0.3) * 0.5;
+      cam.pitch = -0.13 + clamp(wantPitch, -PITCH_MAX, PITCH_MAX) * 0.55;
     }
     if (!Number.isFinite(cam.x) || !Number.isFinite(cam.y) || !Number.isFinite(cam.z)) {
       cam.x = target.x || 0; cam.y = target.y || 0; cam.z = EYE.stand * M;
@@ -509,6 +536,8 @@ export class Renderer3D {
     if (this.quality !== 'low') this._drawStars(ctx, horizonY);
     // الشمس/القمر
     this._drawSun(ctx, horizonY);
+    // غيوم بطيئة تتحرك مع دوران النظر (إحساس عمق السماء)
+    if (this.cfg.clouds) this._drawClouds(ctx, horizonY);
     // سلسلة جبال بعيدة (تعطي إحساس الأفق)
     this._drawRidge(ctx, horizonY);
     // البحر/الفراغ تحت الأفق
@@ -549,6 +578,39 @@ export class Renderer3D {
     g.addColorStop(1, 'rgba(255,180,90,0)');
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(sx, sy, r * 4.5, 0, 6.2832); ctx.fill();
+  }
+  /** غيوم إجرائية (حتمية لكل خريطة) تنساب ببطء أعلى الأفق */
+  _drawClouds(ctx, horizonY) {
+    const n = this.cfg.clouds;
+    const seed = (this.map.id || 'm').length * 31 + (this.map.id || 'm').charCodeAt(0);
+    const sky = this.map.sky || '#12202c';
+    const light = tint(sky, 0.5);
+    ctx.save();
+    for (let i = 0; i < n; i++) {
+      const rnd = (i * 9301 + seed * 49297) % 233280 / 233280;
+      const rnd2 = (i * 4703 + seed * 7717) % 233280 / 233280;
+      // زاوية الغيمة حول اللاعب + انسياب بطيء مع الزمن
+      let rel = (rnd * 6.2832 + this.time * 0.012 * (0.5 + rnd2)) - this.cam.yaw;
+      rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+      if (Math.abs(rel) > this.tanHalfX + 0.55) continue;
+      const sx = this.cx0 + Math.tan(rel) * this.focal;
+      const elev = 0.14 + rnd2 * 0.34;
+      const sy = horizonY - elev * this.h;
+      if (sy > horizonY - 6) continue;
+      const rw = this.w * (0.10 + rnd2 * 0.16);
+      const rh = rw * (0.16 + rnd * 0.1);
+      ctx.globalAlpha = 0.14 + rnd2 * 0.16;
+      ctx.fillStyle = light;
+      ctx.beginPath();
+      for (let k = 0; k < 4; k++) {
+        const t = (k / 3 - 0.5);
+        const puff = 1 - Math.abs(t) * 0.55;
+        ctx.ellipse(sx + t * rw * 0.8, sy - puff * rh * 0.35, rw * 0.42 * puff, rh * puff, 0, 0, 6.2832);
+      }
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
   _drawRidge(ctx, horizonY) {
     const w = this.w;
@@ -746,6 +808,7 @@ export class Renderer3D {
     for (const v of view.vehicles) {
       if (v.dead) continue;
       if (!this._inFrustum(v.x, v.y, 40, 200)) continue;
+      this._groundShadow(v.x, v.y, Math.max(v.w || 70, 70) * 0.62, 0.34);
       this._buildVehicle(v, view);
       this.stats.objects++;
     }
@@ -762,6 +825,11 @@ export class Renderer3D {
       if (!p.al && !p.dying) continue;
       if (p.id === view.myId && this.mode === 'fps') continue;      // لا نرسم أنفسنا في الأول
       if (!this._inFrustum(p.x, p.y, (p.z || 0) + 40, 140)) continue;
+      // ظل أرضي ناعم (يخفت كلما ارتفع اللاعب أثناء الهبوط)
+      if (p.al) {
+        const az = p.z || 0;
+        this._groundShadow(p.x, p.y, (p.pr ? 46 : 26) + az * 0.06, 0.32 * Math.max(0, 1 - az / (12 * M)));
+      }
       this._buildPlayer(p, view);
       this.stats.objects++;
     }
@@ -809,10 +877,12 @@ export class Renderer3D {
       this.stats.objects++;
     } else if (kind === 'rock') {
       if (!this._inFrustum(o.x, o.y, o.r, o.r * 2)) return;
+      if (d2 < 2200 * 2200) this._groundShadow(o.x, o.y, o.r * 1.15, 0.26);
       this._buildRock(o, d2);
       this.stats.objects++;
     } else if (kind === 'tree') {
       if (!this._inFrustum(o.x, o.y, o.r * 3, o.r * 4)) return;
+      if (d2 < 2600 * 2600) this._groundShadow(o.x, o.y, o.r * 1.7, 0.24);
       this._buildTree(o, d2);
       this.stats.objects++;
     }
@@ -1260,6 +1330,94 @@ export class Renderer3D {
     }
     ctx.globalAlpha = 1;
   }
+  /* ---------- الطقس: مطر / ثلج / جمرات / غبار / لقاح ---------- */
+  _weatherDef() {
+    const id = (this.map && this.map.id) || '';
+    return WEATHER[id] || null;
+  }
+  _updateWeather(dt) {
+    const def = this._weatherDef();
+    const want = def ? this.cfg.weather : 0;
+    if (this.weatherKey !== (def ? def.kind : '') + '|' + want) {
+      this.weatherKey = (def ? def.kind : '') + '|' + want;
+      this.weather.length = 0;
+    }
+    if (!want) { if (this.weather.length) this.weather.length = 0; return; }
+    const R = def.radius;
+    // نُنشئ الناقص حول الكاميرا
+    while (this.weather.length < want) {
+      this.weather.push({
+        x: this.cam.x + (Math.random() - 0.5) * 2 * R,
+        y: this.cam.y + (Math.random() - 0.5) * 2 * R,
+        z: Math.random() * 12 * M,
+        ph: Math.random() * 6.2832,
+        sp: 0.75 + Math.random() * 0.6,
+      });
+    }
+    const wind = Math.sin(this.time * 0.13) * 0.6 + 0.7;
+    for (const p of this.weather) {
+      p.z -= def.fall * p.sp * dt;
+      p.x += def.drift * wind * dt + (def.sway ? Math.sin(this.time * 1.7 + p.ph) * def.sway * dt : 0);
+      p.y += def.drift * 0.4 * wind * dt;
+      // إعادة التدوير حول الكاميرا (يبقى الجو كثيفاً أينما ذهب اللاعب)
+      if (def.fall > 0 ? p.z < 0 : p.z > 13 * M) {
+        p.z = def.fall > 0 ? 12 * M : 0.2 * M;
+        p.x = this.cam.x + (Math.random() - 0.5) * 2 * R;
+        p.y = this.cam.y + (Math.random() - 0.5) * 2 * R;
+      }
+      if (Math.abs(p.x - this.cam.x) > R) p.x -= Math.sign(p.x - this.cam.x) * 2 * R;
+      if (Math.abs(p.y - this.cam.y) > R) p.y -= Math.sign(p.y - this.cam.y) * 2 * R;
+    }
+  }
+  _drawWeather(ctx) {
+    const def = this._weatherDef();
+    if (!def || !this.weather.length) return;
+    ctx.save();
+    ctx.strokeStyle = def.color;
+    ctx.fillStyle = def.color;
+    ctx.lineCap = 'round';
+    for (const p of this.weather) {
+      const s = this.worldToScreen(p.x, p.y, p.z);
+      if (!s.vis || s.depth > def.radius * 1.4) continue;
+      if (s.x < -30 || s.x > this.w + 30 || s.y < -30 || s.y > this.h + 30) continue;
+      const k = this.focal / s.depth;
+      const fade = clamp(1 - s.depth / (def.radius * 1.4), 0, 1);
+      if (def.len) {
+        const L = def.len * k * 1.2;
+        ctx.globalAlpha = fade * 0.85;
+        ctx.lineWidth = Math.max(0.6, def.size * k * 0.5);
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(s.x - (def.kind === 'dust' ? L * 0.9 : 0), s.y + L);
+        ctx.stroke();
+      } else {
+        const r = Math.max(0.7, def.size * k * 0.7);
+        ctx.globalAlpha = fade * (def.kind === 'ember' ? (0.5 + 0.5 * Math.sin(this.time * 6 + p.ph)) : 0.9);
+        ctx.beginPath(); ctx.arc(s.x, s.y, r, 0, 6.2832); ctx.fill();
+      }
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+  /** ظل ناعم على الأرض تحت الأجسام (يربط المجسّمات بالأرض) */
+  _groundShadow(x, y, r, alpha) {
+    if (!this.cfg.shadows) return;
+    const s = this.worldToScreen(x, y, 1.2);
+    if (!s.vis) return;
+    const k = this.focal / s.depth;
+    const rx = r * k, ry = rx * 0.42;
+    if (rx < 1.2) return;
+    if (s.x + rx < 0 || s.x - rx > this.w || s.y + ry < 0 || s.y - ry > this.h) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = clamp(alpha === undefined ? 0.3 : alpha, 0, 1);
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(s.x + rx * 0.22, s.y, rx, ry, 0, 0, 6.2832);
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
   _drawZoneRing(ctx, view) {
     const z = view.zone;
     if (!z) return;
@@ -1334,6 +1492,31 @@ export class Renderer3D {
         ctx.closePath(); ctx.fill();
       }
     }
+    // إضاءة ديناميكية: وميض فوهة السلاح والانفجارات ينير المشهد
+    const flash = Math.max(this.muzzleLight, me && me.fireFx ? Math.min(1, me.fireFx) * 0.55 : 0);
+    if (flash > 0.02) {
+      const fx = w / 2, fy = this.mode === 'fps' ? h * 0.72 : h * 0.55;
+      const rg = ctx.createRadialGradient(fx, fy, 0, fx, fy, Math.max(w, h) * 0.85);
+      rg.addColorStop(0, `rgba(255,214,140,${0.30 * flash})`);
+      rg.addColorStop(0.45, `rgba(255,170,70,${0.12 * flash})`);
+      rg.addColorStop(1, 'rgba(255,140,40,0)');
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
+    // تعتيم الأطراف (Vignette) — يركّز النظر ويعطي عمقاً سينمائياً
+    if (this.quality !== 'low') {
+      if (!this._vig || this._vigW !== w || this._vigH !== h) {
+        const vg = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.38, w / 2, h / 2, Math.max(w, h) * 0.72);
+        vg.addColorStop(0, 'rgba(0,0,0,0)');
+        vg.addColorStop(1, 'rgba(0,0,0,.32)');
+        this._vig = vg; this._vigW = w; this._vigH = h;
+      }
+      ctx.fillStyle = this._vig;
+      ctx.fillRect(0, 0, w, h);
+    }
     // منظار القنص
     if (this.cam.ads > 0.5 && view.scope > 2) this._drawScope(ctx, view);
   }
@@ -1386,9 +1569,11 @@ export class Renderer3D {
     // الموضع: وسط الشاشة عند التصويب، يمين أسفل عند الورك
     const hx = w * 0.70, hy = h * 1.0;
     const ax = w * 0.5, ay = h * 0.86;
-    const x = hx + (ax - hx) * ads + bobX;
-    const y = hy + (ay - hy) * ads + bobY + kick * 40 + reload * 90;
-    const rot = (-0.16 + ads * 0.16) + kick * 0.16 + reload * 0.5;
+    // أثناء الجري يُخفض السلاح ويميل (إحساس حركة واقعي)
+    const spr = this.sprintBlend;
+    const x = hx + (ax - hx) * ads + bobX + spr * w * 0.04;
+    const y = hy + (ay - hy) * ads + bobY + kick * 40 + reload * 90 + spr * 120;
+    const rot = (-0.16 + ads * 0.16) + kick * 0.16 + reload * 0.5 + spr * 0.55;
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(rot);
@@ -1554,6 +1739,7 @@ export class Renderer3D {
         this.burst(e.x, e.y, 1.4 * M, 16, { color: 'rgba(130,130,130,.75)', speed: 110, life: 1.6, size: 22, kind: 'smoke', grav: -22 });
         this.shake(16);
         this.hitFlash = 0.5;
+        this.muzzleLight = Math.max(this.muzzleLight, 0.9);
         break;
       }
       case 'vehicleBoom': this.burst(e.x, e.y, 1 * M, 38, { color: '#ffb14a', speed: 400, life: 0.8, size: 8 }); this.shake(18); break;

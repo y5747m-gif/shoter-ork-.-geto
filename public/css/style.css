@@ -324,13 +324,58 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .pause .modal{display:flex;flex-direction:column;gap:10px}
 
 /* ---------- لمس ---------- */
-.touch{position:absolute;inset:0;pointer-events:none; padding-bottom:env(safe-area-inset-bottom,0); padding-left:env(safe-area-inset-left,0); padding-right:env(safe-area-inset-right,0);}
-.stick{position:absolute;bottom:110px;bottom:max(110px, calc(env(safe-area-inset-bottom,0) + 18px)); inset-inline-start:26px; inset-inline-start:max(26px, env(safe-area-inset-left,0)); width:150px;height:150px;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.12),rgba(255,255,255,.03));border:2px solid rgba(255,255,255,.18);pointer-events:auto; touch-action:none;}
-.stick i{position:absolute;top:50%;left:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff6d5,var(--gold2));box-shadow:0 6px 18px rgba(0,0,0,.5)}
-.tbtns{position:absolute;inset:auto 20px 110px auto; inset-inline-end:max(20px, env(safe-area-inset-right,0)); bottom:max(110px, calc(env(safe-area-inset-bottom,0) + 16px)); display:grid;grid-template-columns:repeat(3,68px);gap:10px;pointer-events:auto}
-.tbtn{width:68px;height:68px;border-radius:50%;background:rgba(255,255,255,.1);border:2px solid rgba(255,255,255,.2);font-size:24px;backdrop-filter:blur(4px); touch-action:manipulation; -webkit-touch-callout:none;}
-.tbtn:active{background:rgba(255,198,61,.4)}
-.tbtn.fire{grid-column:span 1;background:radial-gradient(circle,rgba(255,90,60,.5),rgba(255,60,40,.25));font-size:30px}
+/* ================== تخطيط اللمس الأفقي (مثل بابجي / فري فاير) ==================
+   يسار: عصا حركة عائمة تظهر حيث تضع إبهامك · يمين: سحب للنظر + عنقود أزرار القتال
+   أسفل الوسط: شريط أدوات صغير · كل الأحجام متغيّرة حسب ارتفاع الشاشة الأفقية      */
+.touch{position:absolute;inset:0;pointer-events:none;
+  --tb:64px; --tbs:44px; --tbfire:94px;
+  padding-bottom:env(safe-area-inset-bottom,0); padding-left:env(safe-area-inset-left,0); padding-right:env(safe-area-inset-right,0);}
+/* --- العصا العائمة --- */
+.stick{position:absolute;width:150px;height:150px;border-radius:50%;
+  background:radial-gradient(circle,rgba(255,255,255,.13),rgba(255,255,255,.03));
+  border:2px solid rgba(255,255,255,.2);pointer-events:none;touch-action:none;
+  box-shadow:0 8px 30px rgba(0,0,0,.35) inset; transition:opacity .18s ease;}
+.stick.idle{left:max(26px,env(safe-area-inset-left,0));
+  bottom:max(22px,calc(env(safe-area-inset-bottom,0) + 16px)); opacity:.42;}
+.stick i{position:absolute;top:50%;left:50%;width:62px;height:62px;margin:-31px 0 0 -31px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#fff6d5,var(--gold2));box-shadow:0 6px 18px rgba(0,0,0,.5);
+  transition:transform .04s linear;}
+.stick .stick-hint{position:absolute;bottom:-20px;left:0;width:100%;text-align:center;
+  font-size:11px;font-weight:800;color:rgba(255,255,255,.55);font-style:normal;pointer-events:none;}
+.stick:not(.idle) .stick-hint{opacity:0;}
+/* --- الأزرار --- */
+.tbtn{width:var(--tb);height:var(--tb);border-radius:50%;background:rgba(255,255,255,.1);
+  border:2px solid rgba(255,255,255,.22);font-size:24px;line-height:1;color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  backdrop-filter:blur(4px);touch-action:none;-webkit-touch-callout:none;pointer-events:auto;
+  transition:transform .07s ease, background .12s ease;}
+.tbtn:active,.tbtn.on{background:rgba(255,198,61,.42);transform:scale(.93)}
+.tbtn.sm{width:var(--tbs);height:var(--tbs);font-size:18px;border-width:1.5px;background:rgba(255,255,255,.08)}
+.tbtn.mid{width:var(--tb);height:var(--tb);font-size:22px}
+/* عنقود القتال أسفل اليمين */
+.tcluster{position:absolute;right:max(16px,env(safe-area-inset-right,0));
+  bottom:max(16px,calc(env(safe-area-inset-bottom,0) + 10px));
+  display:grid;gap:10px;align-items:center;justify-items:center;pointer-events:auto;
+  grid-template-columns:var(--tb) var(--tb) var(--tbfire);
+  grid-template-areas:"rel jmp aim" "prn cro fire";}
+.tcluster [data-tbtn=reload]{grid-area:rel}
+.tcluster [data-tbtn=jump]{grid-area:jmp}
+.tcluster [data-tbtn=crouch]{grid-area:cro}
+.tcluster [data-tbtn=prone]{grid-area:prn}
+.tcluster [data-tbtn=aim]{grid-area:aim}
+.tcluster [data-tbtn=fire]{grid-area:fire}
+.tbtn.aim{width:var(--tb);height:var(--tb);background:radial-gradient(circle,rgba(120,200,255,.32),rgba(60,140,220,.16));font-size:26px}
+.tbtn.fire{width:var(--tbfire);height:var(--tbfire);font-size:34px;
+  background:radial-gradient(circle,rgba(255,110,70,.55),rgba(255,60,40,.22));
+  border-color:rgba(255,140,90,.55);box-shadow:0 0 22px rgba(255,90,50,.25)}
+/* زر رمي إضافي لليد اليسرى */
+.tbtn.fire2{position:absolute;left:max(14px,env(safe-area-inset-left,0));
+  top:46%;width:60px;height:60px;font-size:24px;opacity:.75;
+  background:radial-gradient(circle,rgba(255,110,70,.4),rgba(255,60,40,.14));border-color:rgba(255,140,90,.4)}
+/* شريط الأدوات أسفل الوسط */
+.tcol{position:absolute;left:50%;transform:translateX(-50%);
+  bottom:max(12px,calc(env(safe-area-inset-bottom,0) + 8px));
+  display:flex;gap:8px;pointer-events:auto;}
 
 /* ---------- النتائج ---------- */
 .results{text-align:center}
@@ -485,11 +530,12 @@ body{
   .items{ gap:4px; }
   .item{ padding:3px 7px; font-size:10px; }
   /* أزرار اللمس أفقية مضغوطة لكن سهلة الضغط */
-  .stick{ width:110px; height:110px; bottom:18px; inset-inline-start:14px; }
-  .stick i{ width:48px; height:48px; margin:-24px 0 0 -24px; }
-  .tbtns{ inset:auto 10px 18px auto; grid-template-columns:repeat(4,54px); gap:6px; }
-  .tbtn{ width:54px; height:54px; font-size:20px; }
-  .tbtn.fire{ font-size:24px; }
+  .touch{ --tb:54px; --tbs:40px; --tbfire:80px; }
+  .stick{ width:124px; height:124px; }
+  .stick i{ width:52px; height:52px; margin:-26px 0 0 -26px; }
+  .tcluster{ gap:8px; }
+  .tbtn.fire{ font-size:28px; }
+  .tbtn.fire2{ width:52px; height:52px; font-size:21px; }
   .chat-live{ bottom:62px; max-height:90px; font-size:11px; }
   .crosshair{ width:32px; height:32px; }
 }
@@ -501,10 +547,14 @@ body{
   .bar{ width:200px; height:12px; }
   .hud-left{ bottom:4px; }
   .hud-right{ bottom:4px; }
-  .tbtns{ grid-template-columns:repeat(4,48px); gap:5px; }
-  .tbtn{ width:48px; height:48px; font-size:18px; }
-  .stick{ width:96px; height:96px; }
-  .stick i{ width:40px; height:40px; margin:-20px 0 0 -20px; }
+  .touch{ --tb:46px; --tbs:36px; --tbfire:68px; }
+  .tcluster{ gap:6px; }
+  .tbtn{ font-size:18px; }
+  .tbtn.fire{ font-size:24px; }
+  .tbtn.fire2{ display:none; }
+  .tcol{ gap:6px; }
+  .stick{ width:104px; height:104px; }
+  .stick i{ width:44px; height:44px; margin:-22px 0 0 -22px; }
 }
 /* 7) هواتف عامة (أقل من 560 — عمودية سيراها طبقة التدوير) */
 @media (max-width:560px){
@@ -512,8 +562,7 @@ body{
   .match-info{font-size:12px;gap:8px;padding:5px 10px}
   .bar{width:60vw}
   .ammo-box b{font-size:24px}
-  .tbtns{grid-template-columns:repeat(3,60px);gap:8px;inset:auto 12px 100px auto}
-  .tbtn{width:60px;height:60px;font-size:21px}
+  .touch{ --tb:56px; --tbs:40px; --tbfire:82px; }
   /* لكن عند التدوير أفقياً (بعد إخفاء الطبقة على بعض الأجهزة التي لا تدعم القفل) — تأكد من التخطيط */
   .top-bar{ flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
   .top-bar::-webkit-scrollbar{ display:none; }
@@ -563,4 +612,27 @@ body{
 /* على الأجهزة التي تدعم الوضع الأفقي بالفعل — لا تظهر */
 @media (orientation:landscape) and (min-width:560px){
   #rotate-overlay.visible{ opacity:0; visibility:hidden; }
+}
+
+/* ========== HUD مُعاد ترتيبه للأجهزة اللمسية (الوضع الأفقي) ==========
+   نرفع أشرطة الصحة وصندوق الذخيرة فوق أزرار اللمس حتى لا يغطيها الإبهام،
+   ونستخدم اتجاهات فيزيائية (يسار/يمين) لأن أزرار اللعب فيزيائية لا منطقية. */
+html.is-touch #hud .hud-left{
+  left:max(12px, env(safe-area-inset-left,0)); right:auto;
+  bottom:max(152px, calc(env(safe-area-inset-bottom,0) + 148px));
+  align-items:flex-start;
+}
+html.is-touch #hud .hud-right{
+  right:max(12px, env(safe-area-inset-right,0)); left:auto;
+  bottom:max(152px, calc(env(safe-area-inset-bottom,0) + 148px));
+  align-items:flex-end;
+}
+html.is-touch #hud .hud-bottom{ display:none; }
+html.is-touch #hud .bar{ width:min(240px, 34vw); }
+html.is-touch #hud .ammo-box em{ max-width:84px; }
+@media (max-height:400px) and (orientation:landscape){
+  html.is-touch #hud .hud-left,
+  html.is-touch #hud .hud-right{ bottom:max(120px, calc(env(safe-area-inset-bottom,0) + 116px)); }
+  html.is-touch #hud .bar{ width:min(200px, 30vw); height:13px; }
+  html.is-touch #hud .gear{ font-size:10px; }
 }

@@ -173,6 +173,7 @@ export class Session {
     if (!this.running) return;
     if (this.paused) { this.drawPaused(); this.updateLookHint(); return; }
     const actions = this.input.drainActions();
+    this.applyAimAssist(dt);
     if (this.online) this.updateOnline(dt, actions); else this.updateOffline(dt, actions);
     this.render(dt);
     this.updateHud();
@@ -502,6 +503,14 @@ export class Session {
           break;
         }
         case 'scoreboard': $('scoreboard').classList.remove('hidden'); break;
+        case 'fullscreen': {
+          try {
+            if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+            else document.documentElement.requestFullscreen?.().catch(() => {});
+          } catch { }
+          try { window.__orkTryLandscape && window.__orkTryLandscape(); } catch { }
+          break;
+        }
         case 'aimToggleFree': break;
         default: break;
       }
@@ -532,6 +541,37 @@ export class Session {
   render(dt) {
     if (this.online) this.renderOnline(dt); else this.renderOffline(dt);
   }
+  /**
+   * مساعدة تصويب لطيفة للهاتف: عند التصويب/الرمي تنجذب زاوية النظر قليلاً
+   * نحو أقرب عدو داخل زاوية ضيقة — تجعل اللعب باللمس عادلاً أمام الماوس.
+   */
+  applyAimAssist(dt) {
+    const inp = this.input;
+    if (!inp || !inp.aimAssist || !inp.isTouch || !inp.fps) return;
+    if (!(inp.touchBtns?.aim || inp.touchBtns?.fire || inp.mouse.down)) return;
+    const myId = this.online ? this.myId : 'you';
+    const list = this.view?.players || [];
+    const me = list.find(p => p.id === myId) || (this.online ? null : this.you);
+    if (!me) return;
+    const myTeam = this.online ? this.myTeam : (this.you ? this.you.team : -1);
+    let bestDa = null, bestScore = Infinity;
+    for (const p of list) {
+      if (p.id === myId || !p.al || p.kn) continue;
+      if (this.teams && p.t === myTeam) continue;
+      const dx = p.x - me.x, dy = p.y - me.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 1500 || d < 1) continue;
+      let da = Math.atan2(dy, dx) - inp.look.yaw;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      const cone = inp.touchBtns?.aim ? 0.20 : 0.12;
+      if (Math.abs(da) > cone) continue;
+      const score = Math.abs(da) * 900 + d * 0.08;
+      if (score < bestScore) { bestScore = score; bestDa = da; }
+    }
+    if (bestDa !== null) inp.look.yaw += bestDa * Math.min(1, dt * 4.5);
+  }
+  /** هل اللاعب يصوّب الآن؟ (زر الماوس الأيمن أو زر التصويب باللمس) */
+  isAiming() { return !!(this.input.mouse.right || this.input.touchBtns?.aim); }
   baseView() {
     const r3 = this.renderer.r3;
     return {
@@ -542,7 +582,8 @@ export class Session {
       view3d: this.renderer.mode,
       camYaw: this.input.fps ? this.input.look.yaw : undefined,
       camPitch: this.input.fps ? this.input.look.pitch : 0,
-      ads: !!this.input.mouse.right,
+      ads: this.isAiming(),
+      sprint: !!this.input.sprinting,
       damageFlash: this.damageFlash,
       shotDirs: this.shotDirs,
       smokes: this.smokes,
@@ -564,10 +605,10 @@ export class Session {
       world, biome: world.biome, loot, players,
       bullets: match.bullets, grenades: match.grenades, airdrops: match.airdrops,
       vehicles: match.vehicles, zone: match.zone, plane: match.plane,
-      scope: this.input.mouse.right && curW(me) ? zoomOf(me) : 1,
+      scope: this.isAiming() && curW(me) ? zoomOf(me) : 1,
     });
     view.myId = 'you';
-    if (this.input.mouse.right && curW(me)) view.myTeam = me.team;
+    if (this.isAiming() && curW(me)) view.myTeam = me.team;
     // مشاهدة بعد الموت: الكاميرا تتبع زميلاً حياً أو أقرب لاعب
     if (!me.alive && match.state !== 'over') {
       const mate = match.players.find(p => p.alive && p.team === me.team && p !== me);
@@ -626,7 +667,7 @@ export class Session {
       world: this.world, biome: this.world.biome, loot: this.loot,
       players, bullets: snap.bullets || [], grenades: snap.grenades || [],
       airdrops: snap.airdrops || [], vehicles: snap.vehicles || [], zone: snap.zone, plane: snap.plane,
-      scope: this.input.mouse.right && this.netYou ? (this.netYou.scope || 1.2) : 1,
+      scope: this.isAiming() && this.netYou ? (this.netYou.scope || 1.2) : 1,
     });
     view.myId = this.myId;
     // مشاهدة بعد الموت (أونلاين)
@@ -716,7 +757,7 @@ export class Session {
       if (i === 3) el.style.transform = `translateY(-50%) translateX(${off - 12}px)`;
     });
     // لوحة النتائج
-    if (!this.input.keys.has('Tab')) $('scoreboard').classList.add('hidden');
+    if (!this.input.keys.has('Tab') && !this.input.sbOpen) $('scoreboard').classList.add('hidden');
     else this.showScoreboard();
     // أزرار اللمس
     if (this.input.isTouch) $('touch-ui').classList.remove('hidden');
