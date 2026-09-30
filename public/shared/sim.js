@@ -413,8 +413,10 @@ export function giveStarterKit(p, match) {
 export function dropPlayer(match, p, x, y) {
   if (!match || !p) return false;
   if (p.dropState !== 'plane' && p.dropState !== 'wait') return false;
-  p.x = clamp(x, -match.world.half, match.world.half);
-  p.y = clamp(y, -match.world.half, match.world.half);
+  // تحصين: إحداثيات غير صالحة (NaN/Infinity) تُرجع للمركز بدل إفساد اللاعب للأبد
+  const sx = Number.isFinite(x) ? x : 0, sy = Number.isFinite(y) ? y : 0;
+  p.x = clamp(sx, -match.world.half, match.world.half);
+  p.y = clamp(sy, -match.world.half, match.world.half);
   p.dropState = 'freefall'; p.z = 780; p.jumpT = 0;
   match.events.push({ t: match.time, type: 'jump', id: p.id, x: p.x, y: p.y });
   return true;
@@ -521,7 +523,17 @@ export function stepMatch(match, dt, inputs, hooks) {
   stepPlane(match, dt);
   stepZone(match, dt);
   stepAirdrops(match, dt);
-  for (const p of match.players) stepPlayer(match, p, dt, inputs ? inputs[p.id] : null, hooks);
+  for (const p of match.players) {
+    stepPlayer(match, p, dt, inputs ? inputs[p.id] : null, hooks);
+    // شبكة أمان ضد الجلتشات: أي إحداثي/سرعة فاسدة تُصحَّح فوراً بدل أن تنتشر
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      p.x = Number.isFinite(match.zone?.x) ? match.zone.x : 0;
+      p.y = Number.isFinite(match.zone?.y) ? match.zone.y : 0;
+      p.vx = 0; p.vy = 0;
+    }
+    if (!Number.isFinite(p.z)) p.z = 0;
+    if (!Number.isFinite(p.hp)) p.hp = 0;
+  }
   stepBullets(match, dt, hooks);
   stepGrenades(match, dt, hooks);
   stepVehicles(match, dt);

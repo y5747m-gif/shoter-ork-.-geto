@@ -101,6 +101,9 @@ globalThis.document = window.document;
 try { Object.defineProperty(globalThis, 'navigator', { value: window.navigator, configurable: true, writable: true }); } catch { }
 try { Object.defineProperty(globalThis, 'location', { value: window.location, configurable: true, writable: true }); } catch { }
 globalThis.localStorage = window.localStorage;
+// 🕌 حارس الصلاة يعطّل اللعب عمداً عند دخول الوقت — نُعطّله هنا حتى تبقى اختبارات
+// اللعب مستقرة في أي ساعة من اليوم (له اختباره الخاص: tests/prayer.test.js)
+try { window.localStorage.setItem('orkz_prayer_cfg', JSON.stringify({ enabled: false })); } catch { }
 globalThis.HTMLElement = window.HTMLElement;
 globalThis.HTMLCanvasElement = window.HTMLCanvasElement;
 globalThis.Path2D = FakePath2D;

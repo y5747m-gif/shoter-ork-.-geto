@@ -28,6 +28,7 @@ export class Session {
     this.you = null;
     this.running = false;
     this.paused = false;
+    this.prayerFrozen = false;   // 🕌 تجميد بسبب وقت الصلاة
     this.dropPhase = true;
     this.dropPoint = null;
     this.view = null;
@@ -108,7 +109,6 @@ export class Session {
     }
     this.dropPoint = null;
     this.beginMatchUI();
-    this.audio.startMusic(this.dropPhase ? 'drop' : 'match');
     if (this.dropPhase) this.toastBig('🪂 اختر نقطة هبوطك!'); else this.toastBig('⚔️ معركة الفريق — أول فريق يصل ٣٠ إقصاء!');
     return true;
   }
@@ -134,13 +134,13 @@ export class Session {
     this._yawSynced = false;
     this.snapInfo = { zone: null, plane: null, airdrops: [], vehicles: world.vehicles.map(v => ({ id: v.id, x: v.x, y: v.y, a: v.angle, t: v.type, hp: v.hp, o: 0, dr: null })), bullets: [], grenades: [] };
     this.beginMatchUI();
-    this.audio.startMusic('drop');
     this.toastBig('🪂 اختر نقطة هبوطك!');
   }
 
   beginMatchUI() {
     this.running = true;
     this.paused = false;
+    this.prayerFrozen = !!this.app?.prayer?.locked;
     // مزامنة وضع الإدخال مع منظور العرض
     this.input.fps = this.renderer.is3D;
     this.input.look.yaw = this.you ? this.you.aim : (this.input.look.yaw || 0);
@@ -168,9 +168,24 @@ export class Session {
     this.drawDropMap();
   }
 
+  /** مسافة حدث عن اللاعب (لمحاكاة بُعد الصوت) — ٠ إن تعذّر الحساب */
+  distToMe(e) {
+    try {
+      const me = this.online ? (this.view?.players || []).find(p => p.id === this.myId) : this.you;
+      if (!me || !e || !Number.isFinite(e.x) || !Number.isFinite(e.y)) return 0;
+      return Math.hypot(e.x - me.x, e.y - me.y);
+    } catch { return 0; }
+  }
+
   /* ============================= الحلقة ============================= */
   update(dt) {
     if (!this.running) return;
+    // 🕌 حارس الصلاة: تجميد كامل للمباراة حتى يؤكّد اللاعب صلاته
+    if (this.prayerFrozen || this.app?.prayer?.locked) {
+      this.prayerFrozen = true;
+      try { this.input.drainActions(); } catch { }
+      return;
+    }
     if (this.paused) { this.drawPaused(); this.updateLookHint(); return; }
     const actions = this.input.drainActions();
     this.applyAimAssist(dt);
@@ -246,7 +261,6 @@ export class Session {
       if (w) this.audio.shot(w.id, 0, silent);
       this.renderer.shake(w && (w.type === 'sniper' || w.type === 'lmg') ? 3.4 : 1.5);
     }
-    if (!this.dropPhase) this.audio.startMusic('match');
     if (match.state === 'over' && !this.results) this.finishOffline();
     me.walking = Math.hypot(me.vx, me.vy) > 20;
     if (me.walking && Math.random() < 0.3) this.renderer.footprints.push({ x: me.x, y: me.y, a: me.aim, life: 6 });
@@ -281,7 +295,6 @@ export class Session {
         this.renderer.shake(def.type === 'sniper' || def.type === 'lmg' ? 3.4 : 1.5);
       }
     }
-    if (!this.dropPhase) this.audio.startMusic('match');
     // تنبيهات
     if (this.dropPhase) $('center-msg').innerHTML = `<div>${this.planeDone ? 'هبوط بالمظلة...' : 'الطائرة في الجو — اختر نقطة الهبوط'}</div>`;
     else $('center-msg').innerHTML = '';
@@ -358,8 +371,8 @@ export class Session {
           this.audio.heal();
           break;
         }
-        case 'explosion': this.audio.explosion(); this.renderer.handleEvent(e, this.viewForEvents()); break;
-        case 'vehicleBoom': this.audio.explosion(); this.renderer.handleEvent(e, this.viewForEvents()); break;
+        case 'explosion': this.audio.explosion(this.distToMe(e)); this.renderer.handleEvent(e, this.viewForEvents()); break;
+        case 'vehicleBoom': this.audio.explosion(this.distToMe(e)); this.renderer.handleEvent(e, this.viewForEvents()); break;
         case 'pickup': {
           if (this.online) { const it = this.loot.find(l => l.id === e.loot); if (it) it.taken = true; }
           const meId = this.myId || 'you';
@@ -505,8 +518,9 @@ export class Session {
           break;
         }
         case 'pause': {
-          if (offline) { this.paused = !this.paused; $('pause').classList.toggle('hidden', !this.paused); }
-          else { this.paused = !this.paused; $('pause').classList.toggle('hidden', !this.paused); }
+          if (this.app?.prayer?.locked) break;      // لا إيقاف/استئناف أثناء قفل الصلاة
+          this.paused = !this.paused;
+          $('pause').classList.toggle('hidden', !this.paused);
           break;
         }
         case 'scoreboard': $('scoreboard').classList.remove('hidden'); break;
@@ -892,14 +906,13 @@ export class Session {
       if (this.renderer.r3) this.renderer.r3.cam.yaw = me.a || 0;
     }
     if (me && me.st !== 'plane' && me.st !== 'wait') {
-      if (this.dropPhase) { this.dropPhase = false; this.audio.startMusic('match'); }
+      if (this.dropPhase) { this.dropPhase = false; }
     }
     $('jump-phase').classList.toggle('hidden', !this.dropPhase);
   }
   onMatchEnd(msg) {
     this.res = msg.res;
     this.showResults(msg.res, null);
-    this.audio.stopMusic();
     if (msg.res.won || (msg.res.placement === 1 && msg.res.mode !== 'tdm')) this.audio.victory(); else this.audio.defeat();
   }
   onRewards(msg) {
@@ -933,7 +946,6 @@ export class Session {
       aliveCount: alive.length,
     };
     this.showResults(this.results, null);
-    this.audio.stopMusic();
     if (won) this.audio.victory(); else this.audio.defeat();
     // إرسال النتيجة للسيرفر لمنح الجوائز (حتى في الأوفلاين)
     if (this.app.token) {
@@ -970,11 +982,9 @@ export class Session {
     if (this.input.releaseLock) this.input.releaseLock();
     this.updateLookHint();
     if (this.online) this.app.net.send({ t: 'leave' });
-    this.audio.stopMusic();
     $('hud').classList.add('hidden');
     $('scr-results').classList.remove('active');
     this.app.ui.showMenu();
-    this.audio.startMusic('menu');
   }
 }
 function require_emote(id) {

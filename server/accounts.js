@@ -62,7 +62,7 @@ export function defaultAccount(name, pwHash = null) {
     missionsDate: { daily: dayKey(), weekly: weekKey() },
     daily: { day: null, streak: 0 },
     friends: [],
-    settings: { sfx: 0.8, music: 0.5, quality: 'high', sens: 1, autoFire: false },
+    settings: { sfx: 0.8, quality: 'high', sens: 1, autoFire: false },   // لا موسيقى في اللعبة
   };
   return acc;
 }
