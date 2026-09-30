@@ -78,7 +78,7 @@ export class Renderer {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.mini = document.getElementById('minimap');
     this.mctx = this.mini ? this.mini.getContext('2d') : null;
-    this.parts = new Particles();
+    this.parts = new Particles(700);   // الحد الابتدائي (متوسط) — يتغيّر مع الجودة
     this.cam = { x: 0, y: 0, z: 0.72, shake: 0, shakeT: 0 };
     /** وضع العرض: 'fps' = أول ثلاثي الأبعاد (افتراضي) | 'tps' = ثالث | 'top' = ثنائي الأبعاد من الأعلى */
     this.mode = 'fps';
@@ -95,6 +95,11 @@ export class Renderer {
     this.miniKey = null;
     this.bloodFx = true;
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
+    /* مقياس دقة تكيّفي للوضع ثنائي الأبعاد: يهبط عند التهنيج (نفس فكرة المحرك ثلاثي الأبعاد) */
+    this.renderScale = 1;
+    this._frameMs = 16;
+    this._adaptT = 0;
+    this._qualityParts = { low: 300, medium: 700, high: 1200, ultra: 1400 };
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -110,16 +115,37 @@ export class Renderer {
       if (this.quality === 'low') dpr = 1;
       else if (this.quality === 'medium') dpr = Math.min(dpr, 1.25);
     }
-    this.dpr = dpr;
-    this.cv.width = Math.floor(w * dpr); this.cv.height = Math.floor(h * dpr);
+    // المقياس التكيّفي لا يرفع الدقة فوق حد الجودة أبداً
+    this.dpr = Math.max(0.5, Math.min(dpr, 2) * this.renderScale);
+    this.cv.width = Math.floor(w * this.dpr); this.cv.height = Math.floor(h * this.dpr);
     if (this.cv.style) { this.cv.style.width = w + 'px'; this.cv.style.height = h + 'px'; }
     this.w = w; this.h = h;
     // تحديث محرك الثلاثي الأبعاد أيضاً
     if (this.r3) { try { this.r3.resize && this.r3.resize(); } catch{} }
   }
+  /** خفض/رفع دقة الوضع ثنائي الأبعاد تلقائياً حسب زمن الإطار */
+  _adaptResolution(dt) {
+    const ms = Math.min(120, dt * 1000);
+    this._frameMs += (ms - this._frameMs) * 0.1;
+    this._adaptT += dt;
+    if (this._adaptT < 0.7) return;
+    this._adaptT = 0;
+    let s = this.renderScale;
+    if (this._frameMs > 30 && s > 0.55) s -= 0.15;
+    else if (this._frameMs > 22 && s > 0.62) s -= 0.08;
+    else if (this._frameMs < 14 && s < 1) s += 0.06;
+    s = Math.max(0.55, Math.min(1, s));
+    if (Math.abs(s - this.renderScale) > 0.001) {
+      this.renderScale = s;
+      this.resize();
+    }
+  }
   setQuality(q) {
     this.quality = q;
     this.dpr = q === 'low' ? 1 : q === 'medium' ? Math.min(window.devicePixelRatio || 1, 1.35) : Math.min(window.devicePixelRatio || 1, 2);
+    this.renderScale = 1;
+    this._frameMs = 16;
+    if (this.parts) this.parts.max = this._qualityParts[q] ?? 700;
     this.resize();
     this.r3.setQuality(q);
   }
@@ -156,6 +182,7 @@ export class Renderer {
   }
   _frame(view, dt) {
     this.parts.update(dt);
+    this._adaptResolution(dt);
     for (let i = this.tracers.length - 1; i >= 0; i--) { this.tracers[i].life -= dt; if (this.tracers[i].life <= 0) this.tracers.splice(i, 1); }
     for (let i = this.footprints.length - 1; i >= 0; i--) { this.footprints[i].life -= dt; if (this.footprints[i].life <= 0) this.footprints.splice(i, 1); }
     for (let i = this.flashes.length - 1; i >= 0; i--) { this.flashes[i].life -= dt; if (this.flashes[i].life <= 0) this.flashes.splice(i, 1); }

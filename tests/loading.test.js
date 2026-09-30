@@ -6,7 +6,8 @@
  *   ٣) لو لم يعمل main.js إطلاقاً (متصفح قديم / فشل تحميل) فإن المراقب المبكر يُنهي شاشة
  *      التحميل ويعرض شاشة الدخول + رسالة وزر إعادة محاولة.
  *   ٤) لو اكتمل التمهيد فلا يتدخل المراقب ولا يخرّب الشاشة.
- *   ٥) طبقة «دوّر الجهاز» لا تحجب الكمبيوتر (نافذة قصيرة) ويمكن تجاوزها على الهاتف.
+ *   ٥) منع الوضع العمودي نهائياً: أي شاشة عمودية (هاتف/تابلت/نافذة ضيقة) تُحجب بلا
+ *      زر تجاوز، وتجمّد حلقة اللعب حتى يدور الجهاز أفقياً.
  * التشغيل: node tests/loading.test.js   (يحتاج السيرفر على المنفذ ٣٠٠٠: npm start)
  */
 import fs from 'node:fs';
@@ -178,13 +179,14 @@ console.log('\n✅ ٤) عند اكتمال التمهيد لا يتدخل الم
   win.close();
 }
 
-/* ===================== ٥) طبقة «دوّر الجهاز» ===================== */
-console.log('\n📱 ٥) طبقة التدوير لا تحجب الكمبيوتر وتُتجاوز على الهاتف');
+/* ===================== ٥) منع الوضع العمودي نهائياً ===================== */
+console.log('\n📱 ٥) الوضع العمودي ممنوع على كل الأجهزة — بلا استثناء ولا تجاوز');
 {
-  const { dom } = makeDom({ size: [1440, 700] }); // نافذة كمبيوتر قصيرة
+  const { dom } = makeDom({ size: [1440, 700] }); // نافذة كمبيوتر عريضة (أفقي)
   const doc = dom.window.document;
   await sleep(900);
-  ok('نافذة كمبيوتر قصيرة لا تُعامل كهاتف', !doc.getElementById('rotate-overlay').classList.contains('visible'));
+  ok('نافذة كمبيوتر أفقية لا تُحجب', !doc.getElementById('rotate-overlay').classList.contains('visible'));
+  ok('حلقة اللعب تعمل في الأفقي', dom.window.__orkPortraitBlocked === false);
   dom.window.close();
 }
 {
@@ -197,10 +199,24 @@ console.log('\n📱 ٥) طبقة التدوير لا تحجب الكمبيوتر
   await sleep(900);
   const overlay = doc.getElementById('rotate-overlay');
   ok('هاتف عمودي يرى رسالة التدوير', overlay.classList.contains('visible'));
-  doc.getElementById('btn-rotate-anyway').click();
-  await sleep(100);
-  ok('زر «متابعة على أي حال» يخفي الطبقة', !overlay.classList.contains('visible'));
+  ok('لا يوجد زر «متابعة على أي حال» — العمودي ممنوع نهائياً', !doc.getElementById('btn-rotate-anyway'));
+  ok('حلقة اللعب مجمّدة أثناء الحجب', win.__orkPortraitBlocked === true);
+  // المستخدم يدوّر الجهاز أفقياً → تختفي الطبقة وتعود اللعبة
+  Object.defineProperty(win, 'innerWidth', { value: 860, configurable: true });
+  Object.defineProperty(win, 'innerHeight', { value: 420, configurable: true });
+  win.dispatchEvent(new win.Event('resize'));
+  await sleep(300);
+  ok('بعد التدوير أفقياً تختفي الطبقة', !overlay.classList.contains('visible'));
+  ok('وتعود اللعبة للعمل فوراً', win.__orkPortraitBlocked === false);
   win.close();
+}
+{
+  // حتى نافذة كمبيوتر عمودية تُحجب: لا وضع عمودي إطلاقاً على أي جهاز
+  const { dom } = makeDom({ size: [500, 900] });
+  const doc = dom.window.document;
+  await sleep(900);
+  ok('نافذة كمبيوتر عمودية تُحجب أيضاً', doc.getElementById('rotate-overlay').classList.contains('visible'));
+  dom.window.close();
 }
 
 console.log(`\n📊 النتيجة: ${pass} ناجح، ${fail} فاشل`);

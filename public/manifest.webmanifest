@@ -1,0 +1,19 @@
+{
+  "name": "أورك زون | ORK ZONE",
+  "short_name": "أورك زون",
+  "description": "لعبة باتل رويال عربية — تعمل بالوضع الأفقي فقط على كل الأجهزة",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "landscape",
+  "background_color": "#070a0f",
+  "theme_color": "#0a0e14",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
