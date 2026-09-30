@@ -592,16 +592,25 @@ function stepAirdrops(match, dt) {
   if (match.state === 'over') return;
   match.nextAirdrop -= dt;
   if (match.nextAirdrop <= 0 && match.airdropCount < 8) {
-    match.airdropCount++;
-    match.nextAirdrop = 95;
     const z = match.zone;
-    const a = Math.random() * Math.PI * 2, rr = Math.random() * z.r * 0.75;
-    const x = z.x + Math.cos(a) * rr, y = z.y + Math.sin(a) * rr;
     const w = match.world;
-    if (!w.shape.inside(x, y)) return;
-    const crate = { id: 'ad' + match.airdropCount, x, y, z: 1400, landed: false, opened: false, vy: 0, smoke: 0 };
-    match.airdrops.push(crate);
-    match.events.push({ t: match.time, type: 'airdrop', x, y });
+    // اختر نقطة داخل حدود الخريطة فعلياً: عدة محاولات (مركز الدائرة الآمنة مُزاح
+    // وقد تقع النقطة خارجه)، ولا نلغي الإنزال كلياً — بل نعيد المحاولة قريباً.
+    let x = z.x, y = z.y, ok = false;
+    for (let tries = 0; tries < 14 && !ok; tries++) {
+      const a = Math.random() * Math.PI * 2, rr = Math.random() * z.r * 0.75;
+      x = z.x + Math.cos(a) * rr; y = z.y + Math.sin(a) * rr;
+      ok = w.shape.inside(x, y);
+    }
+    if (ok) {
+      match.airdropCount++;
+      match.nextAirdrop = 95;
+      const crate = { id: 'ad' + match.airdropCount, x, y, z: 1400, landed: false, opened: false, vy: 0, smoke: 0 };
+      match.airdrops.push(crate);
+      match.events.push({ t: match.time, type: 'airdrop', x, y });
+    } else {
+      match.nextAirdrop = 8;   // ما زال بإمكاننا المحاولة قريباً
+    }
   }
   for (const a of match.airdrops) {
     if (!a.landed) {

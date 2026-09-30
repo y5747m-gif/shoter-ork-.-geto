@@ -5,9 +5,9 @@
 import {
   createMatch, addPlayer, dropPlayer, stepMatch, tryPickup, enterVehicle, exitVehicle,
   snapshot, killPlayer, useSkill, curSlot, zoomOf,
-} from '../shared/sim.js';
-import { botThink, makeBotBrain, botLoadout, DIFFICULTY } from '../shared/ai.js';
-import { MODES, MAPS, CHARACTERS, SKINS, WEAPONS, GAME } from '../shared/gamedata.js';
+} from '../public/shared/sim.js';
+import { botThink, makeBotBrain, botLoadout, DIFFICULTY } from '../public/shared/ai.js';
+import { MODES, MAPS, CHARACTERS, SKINS, WEAPONS, GAME } from '../public/shared/gamedata.js';
 
 export const TICK_MS = 1000 / GAME.tickRate;
 export const SNAP_MS = 1000 / GAME.snapshotRate;
@@ -68,11 +68,12 @@ export function joinRoom(room, client) {
 
 function assignTeam(room, client) {
   if (room.mode === 'solo') return (room.teamSeq = (room.teamSeq || 0) + 1);
-  const mode = room.modeDef.players || 4;
+  // TDM فريقان فقط (٠ و١) دائماً — مهما كان حجم الفريق في تعريف النمط
+  const teamCount = room.mode === 'tdm' ? 2 : (room.modeDef.players || 4);
   const counts = {};
   for (const c of room.clients) counts[c.team] = (counts[c.team] || 0) + 1;
   let best = 0, bestCount = 1e9;
-  for (let t = 0; t < mode; t++) { const n = counts[t] || 0; if (n < bestCount) { bestCount = n; best = t; } }
+  for (let t = 0; t < teamCount; t++) { const n = counts[t] || 0; if (n < bestCount) { bestCount = n; best = t; } }
   return best;
 }
 

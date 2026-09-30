@@ -35,9 +35,9 @@ globalThis.HTMLCanvasElement = function () { };
 globalThis.Path2D = NPath2D;
 globalThis.innerWidth = W; globalThis.innerHeight = H;
 
-const sim = await import(pathToFileURL(path.join(ROOT, 'shared', 'sim.js')).href);
-const ai = await import(pathToFileURL(path.join(ROOT, 'shared', 'ai.js')).href);
-const { WEAPONS, ARMORS, CHAR_NAMES } = await import(pathToFileURL(path.join(ROOT, 'shared', 'gamedata.js')).href);
+const sim = await import(pathToFileURL(path.join(ROOT, 'public', 'shared', 'sim.js')).href);
+const ai = await import(pathToFileURL(path.join(ROOT, 'public', 'shared', 'ai.js')).href);
+const { WEAPONS, ARMORS, CHAR_NAMES } = await import(pathToFileURL(path.join(ROOT, 'public', 'shared', 'gamedata.js')).href);
 const { Renderer } = await import(pathToFileURL(path.join(ROOT, 'public', 'js', 'render.js')).href);
 const uiMod = await import(pathToFileURL(path.join(ROOT, 'public', 'js', 'ui.js')).href);
 
@@ -232,7 +232,7 @@ for (const sc of scenes) {
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => { };
   const ui = new uiMod.UI({ profile: null, audio: { ui() { } } });
-  const { MAPS } = await import(pathToFileURL(path.join(ROOT, 'shared', 'gamedata.js')).href);
+  const { MAPS } = await import(pathToFileURL(path.join(ROOT, 'public', 'shared', 'gamedata.js')).href);
   const dw = 430, dh = 300;
   const sheet = createCanvas(dw * 3, dh * 2 + 30);
   const ctx = sheet.getContext('2d');

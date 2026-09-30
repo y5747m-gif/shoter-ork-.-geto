@@ -1,53 +1,61 @@
 /**
- * ORK ZONE — server/accounts.js
- * حسابات اللاعبين: مستويات، ذهب، جواهر، متجر، باس المعركة، مهام، أصدقاء.
- * تخزين ملف JSON بسيط (يمكن استبداله بقاعدة بيانات لاحقاً).
+ * ORK ZONE — client/localstore.js
+ * نظام الحسابات المحلي: نسخة متصفحية من منطق server/accounts.js — نفس الأشكال
+ * ونفس القواعد تماماً (مستويات، ذهب، متجر، عجلة، صناديق، باس، مهام، جوائز المباريات).
+ * يعمل تلقائياً عندما لا يوجد سيرفر (استضافة ثابتة مثل Vercel/GitHub Pages):
+ * كل شيء يُحفظ في localStorage على جهاز اللاعب، واللعب الأوفلاين يعمل ١٠٠٪.
  */
-import fs from 'node:fs';
-import path from 'node:path';
-import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
 import {
   CHARACTERS, SKINS, WEAPON_SKINS, VEHICLE_SKINS, PARACHUTES, EMOTES, CRATES, WHEEL, BUNDLES,
   BATTLEPASS, MISSIONS, LEVEL_XP, REWARD, RARITY_ORDER, RARITY,
-} from '../public/shared/gamedata.js';
+} from '/shared/gamedata.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const DB_FILE = path.join(DATA_DIR, 'accounts.json');
-const RANK_FILE = path.join(DATA_DIR, 'rankings.json');
+const DB_KEY = 'orkz_local_db';
 
-let db = { accounts: {}, tokens: {}, guestSeq: 1 };
-let rankings = { kills: [], wins: [], damage: [] };
-let dirty = false;
-
-export function initStore() {
+function loadDB() {
   try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (fs.existsSync(DB_FILE)) db = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
-    if (!db.tokens) db.tokens = {};
-    if (fs.existsSync(RANK_FILE)) rankings = JSON.parse(fs.readFileSync(RANK_FILE, 'utf8'));
-  } catch (e) { console.warn('[store] init failed:', e.message); }
-  setInterval(flush, 5000).unref?.();
-  return db;
+    const raw = localStorage.getItem(DB_KEY);
+    if (raw) {
+      const db = JSON.parse(raw);
+      if (db && db.accounts && db.tokens) return db;
+    }
+  } catch { }
+  return { accounts: {}, tokens: {}, rankings: { kills: [], wins: [], damage: [] }, guestSeq: 1 };
 }
-export function flush() {
-  if (!dirty) return;
-  dirty = false;
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(db));
-    fs.writeFileSync(RANK_FILE, JSON.stringify(rankings));
-  } catch (e) { console.warn('[store] flush failed:', e.message); }
+function saveDB(db) {
+  try { localStorage.setItem(DB_KEY, JSON.stringify(db)); } catch { }
 }
-const markDirty = () => { dirty = true; };
 
-const hash = (s) => crypto.createHash('sha256').update(String(s) + '|orkzone').digest('hex');
-const newToken = () => crypto.randomBytes(20).toString('hex');
+const hash = (s) => {
+  // تجزئة بسيطة (لا حاجة لتشفير حقيقي — الحساب محلي على الجهاز نفسه)
+  let h1 = 0x811c9dc5, h2 = 0x1000193;
+  const str = String(s) + '|orkzone';
+  for (let i = 0; i < str.length; i++) {
+    h1 ^= str.charCodeAt(i); h1 = Math.imul(h1, 16777619) >>> 0;
+    h2 = (Math.imul(h2 ^ str.charCodeAt(i), 2246822519) >>> 0);
+  }
+  return (h1 >>> 0).toString(16) + (h2 >>> 0).toString(16);
+};
+const newToken = () => {
+  let t = '';
+  for (let i = 0; i < 40; i++) t += Math.floor(Math.random() * 16).toString(16);
+  return t;
+};
 
-export function defaultAccount(name, pwHash = null) {
-  const acc = {
-    id: 'u' + crypto.randomBytes(6).toString('hex'),
-    name: name.slice(0, 16),
+export function dayKey(d = new Date()) { return d.toISOString().slice(0, 10); }
+export function weekKey(d = new Date()) {
+  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+  return `${t.getUTCFullYear()}-W${week}`;
+}
+
+function defaultAccount(name, pwHash = null) {
+  return {
+    id: 'u' + newToken().slice(0, 12),
+    name: String(name).slice(0, 16),
     pw: pwHash,
     guest: pwHash === null,
     created: Date.now(),
@@ -64,37 +72,24 @@ export function defaultAccount(name, pwHash = null) {
     friends: [],
     settings: { sfx: 0.8, music: 0.5, quality: 'high', sens: 1, autoFire: false },
   };
-  return acc;
-}
-
-export function dayKey(d = new Date()) { return d.toISOString().slice(0, 10); }
-export function weekKey(d = new Date()) {
-  const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-  const day = t.getUTCDay() || 7;
-  t.setUTCDate(t.getUTCDate() + 4 - day);
-  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
-  return `${t.getUTCFullYear()}-W${week}`;
 }
 
 function checkResets(acc) {
   const today = dayKey(), week = weekKey();
-  let changed = false;
   for (const m of MISSIONS) {
     const isDaily = m.type === 'daily' && acc.missionsDate.daily !== today;
     const isWeekly = m.type === 'weekly' && acc.missionsDate.weekly !== week;
     if (isDaily || isWeekly) {
       delete acc.missions.progress[m.id];
       delete acc.missions.claimed[m.id];
-      changed = true;
     }
   }
-  if (acc.missionsDate.daily !== today) { acc.missionsDate.daily = today; changed = true; }
-  if (acc.missionsDate.weekly !== week) { acc.missionsDate.weekly = week; changed = true; }
-  return changed;
+  acc.missionsDate.daily = today;
+  acc.missionsDate.weekly = week;
 }
 
-export function createAccount(name, password) {
+/* ============================= الحسابات ============================= */
+function createAccount(db, name, password) {
   if (!name || name.trim().length < 2) return { error: 'الاسم قصير جداً' };
   const exists = Object.values(db.accounts).some(a => a.name.toLowerCase() === name.trim().toLowerCase() && !a.guest);
   if (exists) return { error: 'الاسم مستخدم بالفعل' };
@@ -102,41 +97,82 @@ export function createAccount(name, password) {
   db.accounts[acc.id] = acc;
   const token = newToken();
   db.tokens[token] = acc.id;
-  markDirty();
+  saveDB(db);
   return { account: acc, token };
 }
-
-export function login(name, password) {
+function login(db, name, password) {
   const acc = Object.values(db.accounts).find(a => a.name.toLowerCase() === String(name || '').trim().toLowerCase() && !a.guest);
   if (!acc) return { error: 'لا يوجد حساب بهذا الاسم' };
   if (acc.pw !== hash(password || '')) return { error: 'كلمة المرور غير صحيحة' };
   const token = newToken();
   db.tokens[token] = acc.id;
-  markDirty();
+  saveDB(db);
   return { account: acc, token };
 }
-
-export function guest(name) {
-  const acc = defaultAccount(name ? name.slice(0, 12) : 'زائر' + Math.floor(Math.random() * 9000 + 1000), null);
+function guest(db, name) {
+  db.guestSeq = (db.guestSeq || 1) + 1;
+  const acc = defaultAccount(name ? String(name).slice(0, 12) : 'زائر' + Math.floor(Math.random() * 9000 + 1000), null);
   db.accounts[acc.id] = acc;
   const token = newToken();
   db.tokens[token] = acc.id;
-  markDirty();
+  saveDB(db);
   return { account: acc, token };
 }
-
-export function byToken(token) {
+function byToken(db, token) {
   const id = db.tokens[token];
   if (!id) return null;
   const acc = db.accounts[id];
   if (!acc) return null;
-  if (checkResets(acc)) markDirty();
+  checkResets(acc);
+  saveDB(db);
   return acc;
 }
-export function byId(id) { return db.accounts[id] || null; }
-export function touch() { markDirty(); }
 
-export function claimDaily(acc) {
+/* ============================= العرض ============================= */
+function missionView(acc) {
+  return MISSIONS.map(m => ({
+    id: m.id, type: m.type, ar: m.ar, goal: m.goal, reward: m.reward,
+    progress: Math.min(acc.missions.progress[m.id] || 0, m.goal),
+    claimed: !!acc.missions.claimed[m.id],
+  }));
+}
+function publicProfile(acc) {
+  return {
+    id: acc.id, name: acc.name, guest: acc.guest, level: acc.level, xp: acc.xp, xpNeed: LEVEL_XP(acc.level),
+    gold: acc.gold, gems: acc.gems, bpXp: acc.bpXp, bpPremium: acc.bpPremium,
+    bpTier: Math.min(BATTLEPASS.tiers, Math.floor(acc.bpXp / BATTLEPASS.xpPerTier) + 1),
+    owned: acc.owned, equipped: acc.equipped, stats: acc.stats,
+    missions: missionView(acc), settings: acc.settings, friends: acc.friends,
+    daily: { available: !acc.daily || acc.daily.day !== dayKey(), streak: (acc.daily && acc.daily.streak) || 0 },
+    local: true,
+  };
+}
+function addXp(acc, xp) {
+  acc.xp += xp;
+  let ups = 0;
+  while (acc.xp >= LEVEL_XP(acc.level)) { acc.xp -= LEVEL_XP(acc.level); acc.level++; ups++; acc.gems += 5; }
+  return ups;
+}
+function progressMission(acc, id, value = 1) {
+  const m = MISSIONS.find(x => x.id === id);
+  if (!m) return;
+  acc.missions.progress[id] = (acc.missions.progress[id] || 0) + value;
+}
+function claimMission(db, acc, id) {
+  const m = MISSIONS.find(x => x.id === id);
+  if (!m) return { error: 'مهمة غير موجودة' };
+  const prog = acc.missions.progress[id] || 0;
+  if (prog < m.goal) return { error: 'لم تكتمل المهمة بعد' };
+  if (acc.missions.claimed[id]) return { error: 'تم استلام الجائزة' };
+  acc.missions.claimed[id] = true;
+  acc.gold += m.reward.gold || 0;
+  acc.gems += m.reward.gems || 0;
+  acc.bpXp += m.reward.bp || 0;
+  addXp(acc, m.reward.xp || 0);
+  saveDB(db);
+  return { ok: true, profile: publicProfile(acc) };
+}
+function claimDaily(db, acc) {
   const today = dayKey();
   if (acc.daily && acc.daily.day === today) return { error: 'استلمت مكافأة اليوم بالفعل — عد غداً' };
   const yesterday = dayKey(new Date(Date.now() - 86400000));
@@ -148,64 +184,12 @@ export function claimDaily(acc) {
   const xp = 120 + acc.daily.streak * 60;
   acc.gold += gold; acc.gems += gems;
   addXp(acc, xp);
-  markDirty();
+  saveDB(db);
   return { ok: true, gold, gems, xp, streak: acc.daily.streak, profile: publicProfile(acc) };
 }
 
-export function publicProfile(acc) {
-  return {
-    id: acc.id, name: acc.name, guest: acc.guest, level: acc.level, xp: acc.xp, xpNeed: LEVEL_XP(acc.level),
-    gold: acc.gold, gems: acc.gems, bpXp: acc.bpXp, bpPremium: acc.bpPremium,
-    bpTier: Math.min(BATTLEPASS.tiers, Math.floor(acc.bpXp / BATTLEPASS.xpPerTier) + 1),
-    owned: acc.owned, equipped: acc.equipped, stats: acc.stats,
-    missions: missionView(acc), settings: acc.settings, friends: acc.friends,
-    daily: { available: !acc.daily || acc.daily.day !== dayKey(), streak: (acc.daily && acc.daily.streak) || 0 },
-  };
-}
-
-export function missionView(acc) {
-  return MISSIONS.map(m => ({
-    id: m.id, type: m.type, ar: m.ar, goal: m.goal, reward: m.reward,
-    progress: Math.min(acc.missions.progress[m.id] || 0, m.goal),
-    claimed: !!acc.missions.claimed[m.id],
-  }));
-}
-
-export function addXp(acc, xp) {
-  acc.xp += xp;
-  let ups = 0;
-  while (acc.xp >= LEVEL_XP(acc.level)) { acc.xp -= LEVEL_XP(acc.level); acc.level++; ups++; acc.gems += 5; }
-  markDirty();
-  return ups;
-}
-
-export function progressMission(acc, id, value = 1) {
-  const m = MISSIONS.find(x => x.id === id);
-  if (!m) return;
-  acc.missions.progress[id] = (acc.missions.progress[id] || 0) + value;
-  markDirty();
-}
-
-export function claimMission(acc, id) {
-  const m = MISSIONS.find(x => x.id === id);
-  if (!m) return { error: 'مهمة غير موجودة' };
-  const prog = acc.missions.progress[id] || 0;
-  if (prog < m.goal) return { error: 'لم تكتمل المهمة بعد' };
-  if (acc.missions.claimed[id]) return { error: 'تم استلام الجائزة' };
-  acc.missions.claimed[id] = true;
-  acc.gold += m.reward.gold || 0;
-  acc.gems += m.reward.gems || 0;
-  acc.bpXp += m.reward.bp || 0;
-  addXp(acc, m.reward.xp || 0);
-  markDirty();
-  return { ok: true, profile: publicProfile(acc) };
-}
-
 /* ============================= المتجر ============================= */
-export function priceOf(item) {
-  return { gold: item.price || 0, gems: item.gems || 0 };
-}
-export function buyItem(acc, kind, id) {
+function buyItem(db, acc, kind, id) {
   const table = {
     char: CHARACTERS, skin: SKINS, wskin: WEAPON_SKINS, vskin: VEHICLE_SKINS,
     parachute: PARACHUTES, emote: EMOTES,
@@ -214,15 +198,14 @@ export function buyItem(acc, kind, id) {
   const item = list.find(i => i.id === id); if (!item) return { error: 'عنصر غير موجود' };
   const bucket = kind === 'char' ? 'chars' : kind === 'skin' ? 'skins' : kind === 'wskin' ? 'wskins' : kind === 'vskin' ? 'vskins' : kind === 'parachute' ? 'parachutes' : 'emotes';
   if (acc.owned[bucket].includes(id)) return { error: 'تملكه بالفعل' };
-  const cost = priceOf(item);
+  const cost = { gold: item.price || 0, gems: item.gems || 0 };
   if (cost.gems > 0) { if (acc.gems < cost.gems) return { error: 'جواهرك غير كافية' }; acc.gems -= cost.gems; }
   if (cost.gold > 0) { if (acc.gold < cost.gold) return { error: 'ذهبك غير كافٍ' }; acc.gold -= cost.gold; }
   acc.owned[bucket].push(id);
-  markDirty();
+  saveDB(db);
   return { ok: true, profile: publicProfile(acc), item };
 }
-
-export function equip(acc, slot, id) {
+function equip(db, acc, slot, id) {
   const map = { char: 'chars', skin: 'skins', wskin: 'wskins', vskin: 'vskins', parachute: 'parachutes', emote: 'emotes' };
   const bucket = map[slot]; if (!bucket) return { error: 'خانة غير معروفة' };
   if (id !== null && !acc.owned[bucket].includes(id)) return { error: 'لا تملك هذا العنصر' };
@@ -230,17 +213,13 @@ export function equip(acc, slot, id) {
     const c = CHARACTERS.find(x => x.id === id);
     if (!c) return { error: 'شخصية غير موجودة' };
     acc.equipped.char = id;
-    // الأزياء الخاصة بشخصيات أخرى تُبقى، لكن يُختار زي متوافق إن لزم
-  } else if (slot === 'skin') {
-    acc.equipped.skin = id;
-  } else if (slot === 'vskin') {
-    acc.equipped.vskin = acc.equipped.vskin || {};
-  } else acc.equipped[slot] = id;
-  markDirty();
+  } else if (slot === 'skin') acc.equipped.skin = id;
+  else if (slot === 'vskin') acc.equipped.vskin = acc.equipped.vskin || {};
+  else acc.equipped[slot] = id;
+  saveDB(db);
   return { ok: true, profile: publicProfile(acc) };
 }
-
-export function buyBundle(acc, bundleId) {
+function buyBundle(db, acc, bundleId) {
   const b = BUNDLES.find(x => x.id === bundleId);
   if (!b) return { error: 'حزمة غير موجودة' };
   if (b.gems > 0) { if (acc.gems < b.gems) return { error: 'جواهر غير كافية' }; acc.gems -= b.gems; }
@@ -255,10 +234,10 @@ export function buyBundle(acc, bundleId) {
     else if (pc) { if (!acc.owned.parachutes.includes(id)) { acc.owned.parachutes.push(id); gained.push(pc.ar); } else acc.gold += 500; }
   }
   if (b.bonusGold) acc.gold += b.bonusGold;
-  markDirty();
+  saveDB(db);
   return { ok: true, gained, profile: publicProfile(acc) };
 }
-export function openCrate(acc, crateId) {
+function openCrate(db, acc, crateId) {
   const crate = CRATES.find(c => c.id === crateId);
   if (!crate) return { error: 'صندوق غير موجود' };
   if (crate.gems > 0) { if (acc.gems < crate.gems) return { error: 'جواهر غير كافية' }; acc.gems -= crate.gems; }
@@ -278,17 +257,17 @@ export function openCrate(acc, crateId) {
   });
   const chosenId = (pool.length ? pool : crate.pool)[Math.floor(Math.random() * (pool.length || crate.pool.length))];
   const item = [...SKINS, ...WEAPON_SKINS, ...EMOTES, ...PARACHUTES].find(i => i.id === chosenId);
+  if (!item) { saveDB(db); return { ok: true, item: crate.pool.length ? { ar: 'غنيمة', rarity: 'rare', id: chosenId } : null, duplicate: false, profile: publicProfile(acc) }; }
   let duplicate = false;
   const bucket = SKINS.includes(item) ? 'skins' : WEAPON_SKINS.includes(item) ? 'wskins' : EMOTES.includes(item) ? 'emotes' : 'parachutes';
   if (acc.owned[bucket].includes(item.id)) {
     duplicate = true;
     acc.gold += Math.round((item.price || 1000) * 0.35);
   } else acc.owned[bucket].push(item.id);
-  markDirty();
+  saveDB(db);
   return { ok: true, item, duplicate, profile: publicProfile(acc) };
 }
-
-export function spinWheel(acc) {
+function spinWheel(db, acc) {
   if (acc.gems < WHEEL.price) return { error: 'تحتاج ' + WHEEL.price + ' جوهرة للدوران' };
   acc.gems -= WHEEL.price;
   const total = WHEEL.slots.reduce((s, x) => s + x.weight, 0);
@@ -312,19 +291,17 @@ export function spinWheel(acc) {
     }
     default: break;
   }
-  markDirty();
+  saveDB(db);
   return { ok: true, slot, extra, profile: publicProfile(acc) };
 }
-
-export function buyBattlePass(acc) {
+function buyBattlePass(db, acc) {
   if (acc.bpPremium) return { error: 'تملك الباس بالفعل' };
   if (acc.gems < BATTLEPASS.premiumPrice) return { error: 'جواهر غير كافية' };
   acc.gems -= BATTLEPASS.premiumPrice; acc.bpPremium = true;
-  markDirty();
+  saveDB(db);
   return { ok: true, profile: publicProfile(acc) };
 }
-
-export function claimBattlePass(acc, tier, track) {
+function claimBattlePass(db, acc, tier, track) {
   if (tier < 1 || tier > BATTLEPASS.tiers) return { error: 'مستوى غير صحيح' };
   const need = (tier - 1) * BATTLEPASS.xpPerTier;
   if (acc.bpXp < need) return { error: 'لم تصل لهذا المستوى' };
@@ -344,14 +321,34 @@ export function claimBattlePass(acc, tier, track) {
     case 'char': if (!acc.owned.chars.includes(rw.value)) acc.owned.chars.push(rw.value); else acc.gems += 300; break;
     default: break;
   }
-  markDirty();
+  saveDB(db);
   return { ok: true, rw, profile: publicProfile(acc) };
 }
+function setSettings(db, acc, s) {
+  acc.settings = { ...acc.settings, ...s };
+  saveDB(db);
+  return acc.settings;
+}
+function addFriend(db, acc, name) {
+  // محلياً: كل الأصدقاء على هذا الجهاز — نضيف الاسم مباشرة
+  if (!name) return { error: 'اكتب اسم اللاعب' };
+  if (name === acc.name) return { error: 'لا يمكنك إضافة نفسك' };
+  if (!acc.friends.includes(name)) acc.friends.push(name);
+  saveDB(db);
+  return { ok: true, friends: acc.friends, profile: publicProfile(acc) };
+}
 
-export function giftGold(acc, amount) { acc.gold += amount; markDirty(); }
-
-/* ============================= نتائج المباراة ============================= */
-export function applyMatchResult(acc, res) {
+/* ============================= نتائج المباريات ============================= */
+function pushRank(db, entry, board) {
+  db.rankings = db.rankings || { kills: [], wins: [], damage: [] };
+  const list = db.rankings[board] || (db.rankings[board] = []);
+  const found = list.find(e => e.id === entry.id);
+  if (found) { found.v += entry.v; found.name = entry.name; }
+  else list.push({ ...entry });
+  list.sort((a, b) => b.v - a.v);
+  db.rankings[board] = list.slice(0, 100);
+}
+function applyMatchResult(db, acc, res) {
   const isWin = res.placement === 1 && res.mode !== 'tdm';
   let gold = REWARD.base + res.kills * REWARD.perKill + Math.floor(res.damage / 100) * REWARD.perDamage100 + res.headshots * REWARD.perHeadshot;
   if (res.placement === 1) gold += REWARD.place1;
@@ -377,7 +374,6 @@ export function applyMatchResult(acc, res) {
   if (res.placement <= 10) acc.stats.top10++;
   if (res.revives) acc.stats.revives += res.revives;
 
-  // المهام
   progressMission(acc, 'daily_play1', 1);
   if (res.kills) progressMission(acc, 'daily_kill3', res.kills);
   if (res.damage) progressMission(acc, 'daily_dmg500', Math.round(res.damage));
@@ -391,42 +387,130 @@ export function applyMatchResult(acc, res) {
   if (isWin) progressMission(acc, 'ach_chicken', 1);
   progressMission(acc, 'ach_100games', 1);
 
-  // لوحات الترتيب
-  pushRank({ name: acc.name, id: acc.id, v: res.kills }, 'kills');
-  if (isWin) pushRank({ name: acc.name, id: acc.id, v: 1 }, 'wins');
-  pushRank({ name: acc.name, id: acc.id, v: Math.round(res.damage) }, 'damage');
+  pushRank(db, { name: acc.name, id: acc.id, v: res.kills }, 'kills');
+  if (isWin) pushRank(db, { name: acc.name, id: acc.id, v: 1 }, 'wins');
+  pushRank(db, { name: acc.name, id: acc.id, v: Math.round(res.damage) }, 'damage');
 
-  markDirty();
+  saveDB(db);
   return { gold, gems, xp, levelUps: ups, bpXp: Math.round(xp * 0.8 + res.kills * 12), profile: publicProfile(acc) };
 }
 
-function pushRank(entry, board) {
-  const list = rankings[board] || (rankings[board] = []);
-  const found = list.find(e => e.id === entry.id);
-  if (found) { found.v += entry.v; found.name = entry.name; }
-  else list.push({ ...entry });
-  list.sort((a, b) => b.v - a.v);
-  rankings[board] = list.slice(0, 100);
-  markDirty();
+/* ============================= موجّه الطلبات ============================= */
+function needAcc(db, body) {
+  const acc = byToken(db, body?.token);
+  if (!acc) return null;
+  return acc;
 }
-export function getRankings() { return rankings; }
 
-export function setSettings(acc, s) {
-  acc.settings = { ...acc.settings, ...s };
-  markDirty();
-  return acc.settings;
-}
-export function addFriend(acc, name) {
-  const other = Object.values(db.accounts).find(a => a.name === name);
-  if (!other) return { error: 'لاعب غير موجود' };
-  if (other.id === acc.id) return { error: 'لا يمكنك إضافة نفسك' };
-  if (!acc.friends.includes(name)) acc.friends.push(name);
-  if (!other.friends.includes(acc.name)) other.friends.push(acc.name);
-  markDirty();
-  return { ok: true, friends: acc.friends };
-}
-export default {
-  initStore, flush, createAccount, login, guest, byToken, byId, touch, publicProfile, addXp,
-  buyItem, equip, buyBundle, openCrate, spinWheel, claimDaily, buyBattlePass, claimBattlePass, applyMatchResult,
-  getRankings, setSettings, addFriend, claimMission, progressMission, missionView, giftGold, dayKey, weekKey,
+export const LocalStore = {
+  /** POST محلي — نفس أشكال استجابات السيرفر تماماً */
+  handle(path, body = {}) {
+    const db = loadDB();
+    try {
+      switch (path) {
+        case '/api/auth/register': {
+          const r = createAccount(db, body.name, body.password);
+          if (r.error) return r;
+          return { token: r.token, profile: publicProfile(r.account) };
+        }
+        case '/api/auth/login': {
+          const r = login(db, body.name, body.password);
+          if (r.error) return r;
+          return { token: r.token, profile: publicProfile(r.account) };
+        }
+        case '/api/auth/guest': {
+          const r = guest(db, body.name);
+          return { token: r.token, profile: publicProfile(r.account) };
+        }
+        case '/api/shop/buy': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return buyItem(db, acc, body.kind, body.id);
+        }
+        case '/api/shop/equip': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return equip(db, acc, body.slot, body.id);
+        }
+        case '/api/shop/bundle': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return buyBundle(db, acc, body.bundleId);
+        }
+        case '/api/shop/crate': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return openCrate(db, acc, body.crateId);
+        }
+        case '/api/shop/wheel': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return spinWheel(db, acc);
+        }
+        case '/api/bp/buy': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return buyBattlePass(db, acc);
+        }
+        case '/api/bp/claim': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return claimBattlePass(db, acc, Number(body.tier), body.track);
+        }
+        case '/api/missions/claim': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return claimMission(db, acc, body.id);
+        }
+        case '/api/daily/claim': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return claimDaily(db, acc);
+        }
+        case '/api/settings': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return { settings: setSettings(db, acc, body.settings || {}) };
+        }
+        case '/api/friends/add': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          return addFriend(db, acc, String(body.name || ''));
+        }
+        case '/api/offline/result': {
+          const acc = needAcc(db, body); if (!acc) return { error: 'جلسة غير صالحة' };
+          const r0 = body.result || {};
+          const result = {
+            placement: Math.max(1, Math.min(50, Math.round(+r0.placement || 1))),
+            kills: Math.max(0, Math.min(60, Math.round(+r0.kills || 0))),
+            damage: Math.max(0, Math.min(12000, Math.round(+r0.damage || 0))),
+            headshots: Math.max(0, Math.min(40, Math.round(+r0.headshots || 0))),
+            time: Math.max(0, Math.min(1800, Math.round(+r0.time || 0))),
+            revives: Math.max(0, Math.min(20, Math.round(+r0.revives || 0))),
+            mode: String(r0.mode || 'solo').slice(0, 8),
+            won: !!r0.won,
+          };
+          const rewards = applyMatchResult(db, acc, result);
+          return { rewards, result };
+        }
+        default:
+          return { error: 'طلب غير مدعوم محلياً: ' + path };
+      }
+    } catch (e) {
+      return { error: 'خطأ محلي: ' + (e?.message || e) };
+    }
+  },
+  /** GET محلي */
+  handleGet(path) {
+    const db = loadDB();
+    try {
+      if (path.startsWith('/api/profile')) {
+        const q = path.split('?')[1] || '';
+        const token = new URLSearchParams(q).get('token');
+        const acc = token ? byToken(db, token) : null;
+        if (!acc) return { error: 'جلسة غير صالحة' };
+        return { profile: publicProfile(acc) };
+      }
+      if (path.startsWith('/api/rankings')) {
+        return db.rankings || { kills: [], wins: [], damage: [] };
+      }
+      return { error: 'طلب غير مدعوم محلياً: ' + path };
+    } catch (e) {
+      return { error: 'خطأ محلي: ' + (e?.message || e) };
+    }
+  },
+  /** هل يوجد حساب محلي محفوظ؟ (لتسريع الدخول التلقائي) */
+  hasAccount() {
+    try { return Object.keys(loadDB().accounts).length > 0; } catch { return false; }
+  },
 };
+export default LocalStore;

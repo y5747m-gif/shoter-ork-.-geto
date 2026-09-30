@@ -13,7 +13,7 @@ import * as rooms from './rooms.js';
 import {
   GAME, WEAPONS, CHARACTERS, SKINS, MAPS, MODES, WEAPON_SKINS, VEHICLE_SKINS,
   PARACHUTES, EMOTES, CRATES, WHEEL, BATTLEPASS, MISSIONS, RARITY, AMMO, ATTACHMENTS, ARMORS, HEALS, BIOMES, REWARD, BUNDLES,
-} from '../shared/gamedata.js';
+} from '../public/shared/gamedata.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -155,7 +155,8 @@ app.post('/api/offline/result', (req, res) => {
 });
 
 /* ---------- ملفات اللعبة الثابتة ---------- */
-app.use('/shared', express.static(path.join(ROOT, 'shared'), { maxAge: 0 }));
+/* ملفات shared/ صارت داخل public/shared — تُخدَم تلقائياً من المسار /shared
+   على أي استضافة ثابتة (Vercel وغيرها) بلا سيرفر Node إطلاقاً */
 app.use(express.static(path.join(ROOT, 'public'), { index: 'index.html', maxAge: 0, etag: true }));
 app.get(/^\/(?!api|shared|ws).*/, (req, res) => res.sendFile(path.join(ROOT, 'public', 'index.html')));
 
@@ -237,7 +238,11 @@ wss.on('connection', (ws, req) => {
       if (room.state === 'playing' && room.match) {
         // اللاعب المنقطع يتحول إلى بوت حتى تستمر المباراة للبقية
         const p = room.match.players.find(pp => pp.id === client.playerId);
-        if (p && !p.bot) { p.bot = true; p.disconnected = true; room.bots.push(p); }
+        if (p && !p.bot) {
+          p.bot = true; p.disconnected = true;
+          p.client = null;                 // بلا هذا يبقى «مجمداً» — tick يتخطى البوتات ذات client
+          room.bots.push(p);
+        }
         room.clients = room.clients.filter(c => c !== client);
         if (room.clients.length === 0) rooms.destroyRoom(room, 3000);
       } else rooms.leaveRoom(client);

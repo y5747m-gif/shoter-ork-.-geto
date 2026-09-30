@@ -12,7 +12,8 @@
     "test:client": "node tests/client.test.js",
     "test:loading": "node tests/loading.test.js",
     "test:render": "node tests/render3d.test.js",
-    "test:all": "node tests/smoke.test.js && node tests/loading.test.js && node tests/render3d.test.js && node tests/mobile.test.js && node tests/client.test.js && node tests/online.test.js",
+    "test:static": "node tests/static.test.js",
+    "test:all": "node tests/smoke.test.js && node tests/loading.test.js && node tests/render3d.test.js && node tests/mobile.test.js && node tests/client.test.js && node tests/static.test.js && node tests/online.test.js",
     "previews": "node tools/preview.mjs",
     "test:mobile": "node tests/mobile.test.js"
   },
