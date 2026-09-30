@@ -30,10 +30,8 @@ class App {
     this.session = new Session(this);
     // عند اكتشاف غياب السيرفر (استضافة ثابتة): وضع محلي كامل + إيقاف محاولات الأونلاين
     API.onOffline = () => {
+      // إيقاف محاولات الأونلاين بصمت — لا نُظهر أي رسالة علوية تزعج اللاعب
       try { this.net.stop(); } catch {}
-      try {
-        this.ui.toast('📴 الوضع المحلي: لا يوجد سيرفر على هذا الرابط — اللعب الأوفلاين يعمل بالكامل وتقدّمك محفوظ على جهازك', 'ok');
-      } catch {}
     };
     this.quality = 'high';
     try { this.quality = localStorage.getItem('orkz_quality') || 'high'; } catch {}

@@ -113,17 +113,12 @@ export class Net {
         this.emit(msg.t, msg);
       };
       this.ws.onclose = (e) => {
+        // إعادة الاتصال بصمت دون إزعاج اللاعب برسائل علوية — الأوفلاين يعمل دائماً
         this.connected = false; this.emit('close', { code: e && e.code });
-        // نبّئ مرة أو مرتين فقط ثم اصمت — لا سبام للتنبيهات كل ٣ ثوانٍ
-        if (e && e.code !== 1000 && this._fails < 2 && !API.offline) {
-          this.emit('error', { error: '🔌 انقطع الاتصال بالسيرفر — سنعيد المحاولة تلقائياً' });
-        }
         this._scheduleReconnect(token);
       };
       this.ws.onerror = () => {
-        if (this._fails < 2 && !API.offline) {
-          this.emit('error', { error: '⚠️ تعذر الاتصال بالسيرفر الأونلاين (الأوفلاين يعمل دائماً)' });
-        }
+        // لا نُظهر أي تنبيه اتصال — نُعيد المحاولة تلقائياً في الخلفية
       };
     } catch (e) {
       this.connected = false;
