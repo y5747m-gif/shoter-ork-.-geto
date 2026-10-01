@@ -81,6 +81,8 @@ export function rgbOf(hex) { return _rgbOf(hex); }
 
 /* اتجاه ضوء الشمس (مُوحَّد) */
 const LX = -0.42, LY = -0.34, LZ = 0.84;
+/* لون الضوء البيئي القادم من السماء (يملأ الظلال بدل السواد الميت) */
+const AMBIENT_SKY = [92, 126, 170];
 
 /* مستويات تفاصيل حسب الجودة */
 /*
@@ -92,9 +94,9 @@ const QUALITY = {
   // هذا الراسم يعمل على Canvas 2D، لذلك عدد البكسلات والأوجه أهم من
   // المؤثرات الشكلية. القيم هنا تعطي الهاتف مساراً خفيفاً من دون إزالة
   // المجسمات الأساسية أو التضحية بوضوح الخصوم.
-  low:    { dpr: 0.82, dist: 1800, fog: [1000, 2200], trees: 0, detail: 0, parts: 90,  weather: 0,  clouds: 0, shadows: 0 },
-  medium: { dpr: 1.00, dist: 2500, fog: [1500, 3100], trees: 0, detail: 0, parts: 180, weather: 24, clouds: 2, shadows: 0 },
-  high:   { dpr: 1.18, dist: 3400, fog: [2200, 4100], trees: 1, detail: 1, parts: 360, weather: 60, clouds: 4, shadows: 1 },
+  low:    { dpr: 0.82, dist: 1900, fog: [1100, 2400], trees: 0, detail: 0, parts: 90,  weather: 0,  clouds: 1, shadows: 1 },
+  medium: { dpr: 1.00, dist: 2600, fog: [1600, 3200], trees: 1, detail: 0, parts: 180, weather: 24, clouds: 3, shadows: 1 },
+  high:   { dpr: 1.18, dist: 3400, fog: [2200, 4100], trees: 1, detail: 1, parts: 360, weather: 60, clouds: 5, shadows: 1 },
   ultra:  { dpr: 1.35, dist: 4400, fog: [2800, 5200], trees: 1, detail: 1, parts: 650, weather: 100, clouds: 7, shadows: 1 },
 };
 
@@ -277,21 +279,35 @@ export class Renderer3D {
   /* ------------------------------------------------------------------ */
   /* التظليل                                                             */
   /* ------------------------------------------------------------------ */
+  /**
+   * تظليل الوجه: إضاءة شمس دافئة + ضوء سماء بارد في الظل + ضباب المسافة.
+   * درجات الإضاءة أدقّ (٢٤ درجة بدل ١٤) فتختفي «أشرطة» التدرّج وتبدو الأسطح أنعم،
+   * والظل لا يصير رمادياً ميتاً بل يميل للون السماء كما في الواقع.
+   * كل النتائج مخزّنة في cache فالتكلفة عملياً صفر داخل الحلقة.
+   */
   _shade(hex, light, depth) {
-    const li = clamp(Math.round((0.12 + light * 0.88) * 14), 0, 14);
-    const fo = clamp(Math.round(((depth - this.fogNear) / Math.max(1, this.fogFar - this.fogNear)) * 10), 0, 10);
+    const li = clamp(Math.round(light * 24), 0, 24);
+    const fo = clamp(Math.round(((depth - this.fogNear) / Math.max(1, this.fogFar - this.fogNear)) * 12), 0, 12);
     const key = hex + '|' + li + '|' + fo + '|' + this._fogKey;
     let s = this._shadeCache.get(key);
     if (s !== undefined) return s;
     const [r, g, b] = rgbOf(hex);
-    const k = 0.5 + 0.5 * (li / 14);
+    const u = li / 24;                       // ٠ = ظل كامل، ١ = مواجه للشمس
+    const k = 0.46 + 0.62 * u;               // مدى سطوع أوسع = تباين مجسّم أوضح
+    // ضوء بيئي من السماء يملأ الظلال (أزرق خفيف) + دفء الشمس على الأسطح المضيئة
+    const amb = (1 - u) * 0.20;
+    const [sr, sg, sb] = this._ambRGB || AMBIENT_SKY;
+    const warm = u * u * 0.07;
+    let R = r * k * (1 - amb) + sr * amb + 255 * warm * 0.9;
+    let G = g * k * (1 - amb) + sg * amb + 255 * warm * 0.72;
+    let B = b * k * (1 - amb) + sb * amb + 255 * warm * 0.38;
     const [fr, fg, fb] = this._fogRGB;
-    const t = fo / 10;
-    const R = Math.round((r * k) * (1 - t) + fr * t);
-    const G = Math.round((g * k) * (1 - t) + fg * t);
-    const B = Math.round((b * k) * (1 - t) + fb * t);
+    const t = fo / 12;
+    R = Math.round(clamp(R * (1 - t) + fr * t, 0, 255));
+    G = Math.round(clamp(G * (1 - t) + fg * t, 0, 255));
+    B = Math.round(clamp(B * (1 - t) + fb * t, 0, 255));
     s = `rgb(${R},${G},${B})`;
-    if (this._shadeCache.size > 6000) this._shadeCache.clear();
+    if (this._shadeCache.size > 9000) this._shadeCache.clear();
     this._shadeCache.set(key, s);
     return s;
   }
@@ -331,7 +347,24 @@ export class Renderer3D {
     const vx = this.cam.x - fcx, vy = this.cam.y - fcy, vz = this.cam.z - fcz;
     const facing = nx * vx + ny * vy + nz * vz;
     if (!o.twoSided && facing <= 0) return;
-    const light = o.light !== undefined ? o.light : 0.45 + 0.55 * Math.max(0, nx * LX + ny * LY + nz * LZ);
+    // نموذج إضاءة من ثلاث مكوّنات: شمس مباشرة + نصف‑كرة السماء من الأعلى + ارتداد من الأرض،
+    // ولمعة خفيفة (specular) على الأسطح التي تعكس الشمس نحو الكاميرا — عمق أوضح للمجسمات.
+    let light;
+    if (o.light !== undefined) light = o.light;
+    else {
+      const sun = Math.max(0, nx * LX + ny * LY + nz * LZ);
+      const sky = 0.5 + 0.5 * nz;                 // السقف أفتح، الجوانب متوسطة، الأسفل أغمق
+      const bounce = Math.max(0, -nz) * 0.18;
+      light = 0.17 + 0.56 * sun + 0.22 * sky + bounce;
+      if (sun > 0.55) {
+        const vl = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1;
+        const hx = LX + vx / vl, hy = LY + vy / vl, hz = LZ + vz / vl;
+        const hl = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
+        const spec = Math.max(0, (nx * hx + ny * hy + nz * hz) / hl);
+        light += spec * spec * spec * spec * 0.22;
+      }
+      if (light > 1) light = 1;
+    }
     // تحويل الرؤوس
     const cn = this._clipA;
     let n = 0;
@@ -459,6 +492,9 @@ export class Renderer3D {
     this._fogKey = map.id;
     if (!this._fogRGB || this._fogKeyFor !== map.id) {
       this._fogRGB = rgbOf(this.fogColor = tint(biome.ground2 || '#223', 0.18));
+      // لون الضوء البيئي = سماء الخريطة (ظلال زرقاء في الجليد، برتقالية في البركان…)
+      const sk = rgbOf(tint(map.sky || '#12202c', 0.25));
+      this._ambRGB = [(sk[0] + AMBIENT_SKY[0]) / 2, (sk[1] + AMBIENT_SKY[1]) / 2, (sk[2] + AMBIENT_SKY[2]) / 2];
       this._fogKeyFor = map.id;
       this._shadeCache.clear();
     }
@@ -731,6 +767,18 @@ export class Renderer3D {
     ctx.fillStyle = this.biome.ground;
     ctx.fillRect(0, 0, this.w, this.h);
     this._drawGroundDetail(ctx, view);
+    // ضباب المسافة على الأرض: الأرض البعيدة تذوب تدريجياً في لون الأفق — عمق أوضح
+    const hz = this.cy0 + Math.tan(this.cam.pitch) * this.focal;
+    const span = Math.max(80, this.h * 0.55);
+    if (hz < this.h) {
+      const [fr, fg, fb] = this._fogRGB || [120, 130, 140];
+      const hg = ctx.createLinearGradient(0, hz - 6, 0, hz + span);
+      hg.addColorStop(0, `rgba(${fr},${fg},${fb},0.92)`);
+      hg.addColorStop(0.45, `rgba(${fr},${fg},${fb},0.34)`);
+      hg.addColorStop(1, `rgba(${fr},${fg},${fb},0)`);
+      ctx.fillStyle = hg;
+      ctx.fillRect(0, Math.max(0, hz - 6), this.w, Math.min(this.h, span + 6));
+    }
     ctx.restore();
   }
   /** تفاصيل الأرض: طرق، مياه، حمم، أرضيات البيوت، شبكة أمتار */
@@ -830,11 +878,91 @@ export class Renderer3D {
     c2.fill();
   }
 
+  /**
+   * غطاء الأرض: رقع عشب/رمل متدرّجة + أعشاب صغيرة + حصى حول الكاميرا.
+   * تُولَّد من تجزئة إحداثيات الخلية (نفس المكان دائماً، بلا تخزين) فتبدو الأرض
+   * حيّة بدل لون مسطّح واحد — وهي أكبر فرق بصري في الخرائط المفتوحة.
+   */
+  _buildGroundCover(view) {
+    if (this.quality === 'low') return;
+    const biome = this.biome || {};
+    const shape = view.world.shape;
+    const ground = biome.ground || '#2f5d3a';
+    const detail = biome.detail || tint(ground, 0.18);
+    const plant = biome.tree || detail;      // لون النبات في هذه البيئة
+    const camX = this.cam.x, camY = this.cam.y;
+    const hash = (a, b) => { let h = (a * 374761393 + b * 668265263) | 0; h = (h ^ (h >> 13)) * 1274126177; return ((h ^ (h >> 16)) >>> 0) / 4294967296; };
+    /** داخل حدود الخريطة فقط — حتى لا يطفو العشب فوق الماء أو خارج الجزيرة */
+    const inside = (x, y, margin) => {
+      if (!shape || !shape.radius) return true;
+      const d = Math.hypot(x, y);
+      let r;
+      try { r = shape.radius(Math.atan2(y, x)); } catch { return true; }
+      return d < r - (margin || 0);
+    };
+    // ١) تمويج لوني خفيف على الأرض (رقع متداخلة كبيرة = إحساس تربة طبيعية لا لون مسطّح)
+    const pStep = 300;
+    const pRad = this.quality === 'ultra' ? 1700 : this.quality === 'high' ? 1400 : 1000;
+    const gx0 = Math.floor((camX - pRad) / pStep), gx1 = Math.floor((camX + pRad) / pStep);
+    const gy0 = Math.floor((camY - pRad) / pStep), gy1 = Math.floor((camY + pRad) / pStep);
+    for (let gx = gx0; gx <= gx1; gx++) {
+      for (let gy = gy0; gy <= gy1; gy++) {
+        const r1 = hash(gx, gy);
+        if (r1 > 0.7) continue;
+        const x = gx * pStep + hash(gx + 7, gy) * pStep;
+        const y = gy * pStep + hash(gx, gy + 11) * pStep;
+        const dx = x - camX, dy = y - camY;
+        if (dx * dx + dy * dy > pRad * pRad) continue;
+        const sz = 330 + r1 * 420;
+        if (!inside(x, y, sz * 0.75)) continue;
+        if (!this._inFrustum(x, y, 2, sz)) continue;
+        const amt = (hash(gx + 3, gy + 5) - 0.5) * 0.075;
+        this._floorQuad(x, y, 1.2, sz, sz * (0.75 + r1 * 0.5), r1 * 3.14, tint(ground, amt), {});
+      }
+    }
+    if (this.quality !== 'high' && this.quality !== 'ultra') return;
+    if (this._perfDetail < 0.8) return;
+    // ٢) خصل عشب وحصى صغيرة قرب الكاميرا (تفاصيل تُحسّ عند المشي)
+    const step = 115;
+    const rad = this.quality === 'ultra' ? 640 : 460;
+    const x0 = Math.floor((camX - rad) / step), x1 = Math.floor((camX + rad) / step);
+    const y0 = Math.floor((camY - rad) / step), y1 = Math.floor((camY + rad) / step);
+    let budget = this.quality === 'ultra' ? 130 : 80;
+    for (let gx = x0; gx <= x1 && budget > 0; gx++) {
+      for (let gy = y0; gy <= y1 && budget > 0; gy++) {
+        const r1 = hash(gx * 3 + 1, gy * 5 + 2);
+        if (r1 > 0.5) continue;
+        const x = gx * step + hash(gx + 13, gy) * step;
+        const y = gy * step + hash(gx, gy + 17) * step;
+        const dx = x - camX, dy = y - camY;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > rad * rad || d2 < 1600) continue;
+        if (!inside(x, y, 60)) continue;
+        if (!this._inFrustum(x, y, 8, 24)) continue;
+        budget--;
+        if (r1 < 0.16) {
+          const rr = 6 + r1 * 26;      // حصاة صغيرة
+          this._box(x, y, 0, rr, rr * 0.8, rr * 0.55, r1 * 3, tint(biome.accent || '#7a7a7a', -0.1), { topColor: tint(biome.accent || '#7a7a7a', 0.1) });
+        } else {
+          // نبتة صغيرة بلون نبات البيئة (عشب أخضر / شجيرة صحراوية / حشائش ثلجية)
+          const h = 8 + r1 * 14;
+          const w = 3 + r1 * 4;
+          const col = tint(plant, -0.08 + (r1 - 0.3) * 0.3);
+          const a = r1 * 3.14;
+          const ca = Math.cos(a) * w, sa = Math.sin(a) * w;
+          this._quad([x - ca, y - sa, 0, x + ca, y + sa, 0, x + ca * 0.45, y + sa * 0.45, h, x - ca * 0.45, y - sa * 0.45, h], col, { twoSided: true });
+          this._quad([x - sa, y + ca, 0, x + sa, y - ca, 0, x + sa * 0.45, y - ca * 0.45, h * 0.8, x - sa * 0.45, y + ca * 0.45, h * 0.8], tint(col, -0.14), { twoSided: true });
+        }
+      }
+    }
+  }
+
   /* ---------- بناء العالم ثلاثي الأبعاد ---------- */
   _buildWorld(view) {
     const world = view.world;
     const out = this._objs || (this._objs = []);
     this.stats.objects = 0;
+    this._buildGroundCover(view);
     if (world.grid) {
       world.grid.query(this.cam.x, this.cam.y, this.activeDrawDist || this.drawDist, out);
       for (const o of out) this._buildObstacle(o, view);
@@ -952,8 +1080,29 @@ export class Renderer3D {
       const col = biome.build || '#7d6a52';
       this._box(o.x, o.y, 0, o.w, o.h, WALL_H, 0, col, { topColor: tint(col, -0.15) });
       // حافة علوية
-      if ((this.quality === 'high' || this.quality === 'ultra') && d2 < 2100 * 2100 && this._perfDetail > 0.78) {
+      if (this.quality !== 'low' && d2 < 2400 * 2400 && this._perfDetail > 0.78) {
         this._box(o.x, o.y, WALL_H, o.w + 4, o.h + 4, 8, 0, tint(col, 0.12), {});
+      }
+      // تفاصيل الواجهة: قاعدة حجرية + نافذة غائرة — تكسر الجدار المسطّح وتعطيه مقياساً
+      if ((this.quality === 'high' || this.quality === 'ultra') && d2 < 1500 * 1500 && this._perfDetail > 0.8) {
+        const long = o.w >= o.h;
+        const len = long ? o.w : o.h;
+        this._box(o.x, o.y, 0, o.w + 5, o.h + 5, 0.34 * M, 0, tint(col, -0.26), { topColor: tint(col, -0.1) });
+        if (len > 120) {
+          const n = Math.min(3, Math.floor(len / 150));
+          const winW = Math.min(0.75 * M, len / (n * 2.4));
+          const glass = tint(biome.water || '#20384a', 0.05);
+          for (let i = 0; i < n; i++) {
+            const t = (i + 1) / (n + 1) - 0.5;
+            const wx = o.x + (long ? t * len : 0);
+            const wy = o.y + (long ? 0 : t * len);
+            const sx = long ? winW : o.w + 6;
+            const sy = long ? o.h + 6 : winW;
+            this._box(wx, wy, 1.45 * M, sx, sy, 0.78 * M, 0, glass, { topColor: tint(glass, 0.18) });
+            this._box(wx, wy, 1.4 * M, sx + 9, sy + 9, 0.1 * M, 0, tint(col, 0.2), {});
+            this._box(wx, wy, 2.18 * M, sx + 9, sy + 9, 0.1 * M, 0, tint(col, 0.2), {});
+          }
+        }
       }
       this.stats.objects++;
     } else if (kind === 'crate') {
@@ -982,7 +1131,7 @@ export class Renderer3D {
   _buildRock(o, d2) {
     const r = o.r * 1.15;
     const hgt = o.r * 0.8;
-    const sides = (this.quality === 'low' || d2 > 2600 * 2600) ? 5 : 7;
+    const sides = (this.quality === 'low' || d2 > 2600 * 2600) ? 5 : this.quality === 'ultra' ? 9 : 7;
     const base = '#8d939c';
     const seed = (o.x * 0.013 + o.y * 0.017);
     if (d2 > 3400 * 3400) {           // بعيد: بطاقة مسطّحة
@@ -1012,7 +1161,10 @@ export class Renderer3D {
     for (let i = 0; i < sides; i++) {
       top.push(ring[i * 2] * 0.72 + o.x * 0.28, ring[i * 2 + 1] * 0.72 + o.y * 0.28, hgt);
     }
-    this._fan(o.x, o.y, hgt + 4, top, sides, tint(base, 0.18));
+    // قمة الصخرة تأخذ لون البيئة (ثلج على القمة، طحلب في الجزيرة، سخام في البركان)
+    const capMix = this.biome && this.biome.detail ? this.biome.detail : null;
+    const capCol = capMix && d2 < 2000 * 2000 ? tint(capMix, -0.5) : tint(base, 0.18);
+    this._fan(o.x, o.y, hgt + 4, top, sides, capCol);
   }
   _buildTree(o, d2) {
     const biome = this.biome;
@@ -1273,42 +1425,81 @@ export class Renderer3D {
     };
     // ---------- الساقان ----------
     const legUp = 0.42 * m, legLo = 0.4 * m;
+    const bootCol = '#20242a';
     if (lod === 0) {
       for (const [side, sgn] of [[-1, sw], [1, sw2]]) {
         const lx = side * 0.1 * m;
         const ta = sgn * 0.62, sa = -Math.max(0, sgn) * 0.5;
-        part(lx, 0.02 * m, hipZ - legUp / 2, 0.14 * m, 0.16 * m, legUp, pants, ta, hipZ);
+        part(lx, 0.02 * m, hipZ - legUp / 2, 0.14 * m, 0.16 * m, legUp, pants, ta, hipZ, { topColor: tint(pants, 0.08) });
         const kneeZ = hipZ - legUp;
+        // ركبة (وصلة) تمنع «الكسر» بين الفخذ والساق عند الحركة
+        part(lx, 0.02 * m - Math.sin(ta) * legUp * 0.5, kneeZ, 0.145 * m, 0.155 * m, 0.1 * m, tint(pants, -0.2), ta, kneeZ);
         part(lx, 0.02 * m - Math.sin(ta) * legUp * 0.5, kneeZ - legLo / 2, 0.12 * m, 0.14 * m, legLo, tint(pants, -0.12), ta + sa, kneeZ);
-        part(lx, 0.02 * m - Math.sin(ta + sa) * (legUp + legLo) * 0.45 + 0.05 * m, 0.05 * m, 0.13 * m, 0.24 * m, 0.1 * m, '#20242a', (ta + sa) * 0.3, 0.05 * m);
+        // حذاء برقبة + نعل داكن
+        const footY = 0.02 * m - Math.sin(ta + sa) * (legUp + legLo) * 0.45;
+        part(lx, footY, 0.13 * m, 0.14 * m, 0.15 * m, 0.14 * m, tint(bootCol, 0.1), (ta + sa) * 0.3, 0.13 * m);
+        part(lx, footY + 0.05 * m, 0.05 * m, 0.13 * m, 0.24 * m, 0.1 * m, bootCol, (ta + sa) * 0.3, 0.05 * m, { topColor: tint(bootCol, 0.14) });
       }
     } else if (lod === 1) {
       part(-0.09 * m, 0, hipZ / 2, 0.15 * m, 0.17 * m, hipZ, pants, sw * 0.3, hipZ);
       part(0.09 * m, 0, hipZ / 2, 0.15 * m, 0.17 * m, hipZ, pants, sw2 * 0.3, hipZ);
+      part(-0.09 * m, 0.03 * m, 0.05 * m, 0.14 * m, 0.22 * m, 0.1 * m, bootCol, 0, 0.05 * m);
+      part(0.09 * m, 0.03 * m, 0.05 * m, 0.14 * m, 0.22 * m, 0.1 * m, bootCol, 0, 0.05 * m);
     } else {
       part(0, 0, hipZ / 2, 0.26 * m, 0.2 * m, hipZ, pants, 0, hipZ);
     }
     // ---------- الجذع ----------
     const torsoZ = hipZ + 0.28 * m;
     part(0, 0, hipZ + 0.04 * m, 0.3 * m, 0.2 * m, 0.16 * m, tint(pants, 0.06), 0, hipZ);
-    part(0, 0, torsoZ, 0.4 * m, 0.23 * m, 0.44 * m, body, 0, torsoZ, { topColor: tint(body, 0.1) });
+    // الجذع: جوانب أغمق قليلاً من الصدر = حجم أوضح للجسم
+    part(0, 0, torsoZ, 0.4 * m, 0.23 * m, 0.44 * m, body, 0, torsoZ, {
+      topColor: tint(body, 0.12),
+      colors: [tint(body, -0.12), tint(body, -0.12), tint(body, -0.2), tint(body, 0.05)],
+    });
+    if (lod === 0) {
+      // حزام الخصر + كتفان مستديران (يكسران الشكل الصندوقي)
+      part(0, 0, hipZ + 0.12 * m, 0.42 * m, 0.25 * m, 0.07 * m, '#2a2b30', 0, hipZ, { topColor: '#3a3c42' });
+      for (const sd of [-1, 1]) part(sd * 0.185 * m, 0, torsoZ + 0.17 * m, 0.1 * m, 0.2 * m, 0.11 * m, tint(body, 0.1), 0, torsoZ);
+    }
     if (p.vestLvl) {
       const vc = p.vestLvl === 3 ? '#3a3a3a' : p.vestLvl === 2 ? '#4a4230' : '#5a5240';
-      part(0, 0, torsoZ + 0.02 * m, 0.43 * m, 0.26 * m, 0.36 * m, vc, 0, torsoZ);
-      if (lod === 0) part(0, 0.02 * m, torsoZ + 0.14 * m, 0.2 * m, 0.02 * m, 0.1 * m, accent, 0, torsoZ);
+      part(0, 0, torsoZ + 0.02 * m, 0.43 * m, 0.26 * m, 0.36 * m, vc, 0, torsoZ, { topColor: tint(vc, 0.14), colors: [tint(vc, -0.1), tint(vc, -0.1), tint(vc, -0.18), tint(vc, 0.06)] });
+      if (lod === 0) {
+        part(0, 0.02 * m, torsoZ + 0.14 * m, 0.2 * m, 0.02 * m, 0.1 * m, accent, 0, torsoZ);
+        // جيوب مخازن على الصدر
+        for (const sd of [-1, 1]) part(sd * 0.11 * m, 0.14 * m, torsoZ - 0.02 * m, 0.13 * m, 0.04 * m, 0.14 * m, tint(vc, -0.22), 0, torsoZ);
+      }
     }
     if (p.bagLvl && lod < 2) {
-      part(0, -0.19 * m, torsoZ + 0.02 * m, 0.3 * m, 0.16 * m, 0.4 * m, p.bagLvl === 3 ? '#3b3a2a' : '#4a4a3a', 0, torsoZ);
+      const bg = p.bagLvl === 3 ? '#3b3a2a' : '#4a4a3a';
+      part(0, -0.19 * m, torsoZ + 0.02 * m, 0.3 * m, 0.16 * m, 0.4 * m, bg, 0, torsoZ, { topColor: tint(bg, 0.14) });
+      if (lod === 0) {
+        for (const sd of [-1, 1]) part(sd * 0.14 * m, -0.02 * m, torsoZ + 0.08 * m, 0.05 * m, 0.26 * m, 0.26 * m, tint(bg, -0.25), 0, torsoZ);
+      }
     }
     // ---------- الرأس ----------
     const headZ = torsoZ + 0.34 * m;
-    if (lod === 0) part(0, 0, headZ - 0.05 * m, 0.11 * m, 0.11 * m, 0.1 * m, tone, 0, headZ);
-    part(0, 0.01 * m, headZ + 0.08 * m, 0.2 * m, 0.22 * m, 0.24 * m, tone, 0, headZ);
+    if (lod === 0) part(0, 0, headZ - 0.05 * m, 0.11 * m, 0.11 * m, 0.1 * m, tint(tone, -0.22), 0, headZ);   // الرقبة
+    // الرأس: وجه أفتح + مؤخرة أغمق (شعر) = ملامح واضحة من كل الزوايا
+    part(0, 0.01 * m, headZ + 0.08 * m, 0.2 * m, 0.22 * m, 0.24 * m, tone, 0, headZ, {
+      topColor: tint(style.hair, 0.05),
+      colors: [tint(tone, -0.12), tint(tone, -0.12), tint(style.hair, 0.02), tint(tone, 0.08)],
+    });
+    if (lod === 0) {
+      // عينان + فم بسيط (تُقرأ جيداً حتى على شاشة الهاتف)
+      part(-0.05 * m, 0.115 * m, headZ + 0.12 * m, 0.045 * m, 0.02 * m, 0.035 * m, '#17181c', 0, headZ);
+      part(0.05 * m, 0.115 * m, headZ + 0.12 * m, 0.045 * m, 0.02 * m, 0.035 * m, '#17181c', 0, headZ);
+      part(0, 0.115 * m, headZ + 0.04 * m, 0.07 * m, 0.015 * m, 0.02 * m, tint(tone, -0.35), 0, headZ);
+    }
     const hat = style.hat;
     if (p.helmLvl) {
       const hc = p.helmLvl === 3 ? '#2f2f2f' : p.helmLvl === 2 ? '#3d4a33' : '#4a4436';
-      part(0, 0, headZ + 0.13 * m, 0.235 * m, 0.25 * m, 0.16 * m, hc, 0, headZ);
-      if (lod === 0) part(0, 0.1 * m, headZ + 0.07 * m, 0.22 * m, 0.06 * m, 0.09 * m, tint(hc, -0.2), 0, headZ);
+      part(0, 0, headZ + 0.13 * m, 0.235 * m, 0.25 * m, 0.16 * m, hc, 0, headZ, { topColor: tint(hc, 0.16) });
+      if (lod === 0) {
+        part(0, 0.1 * m, headZ + 0.07 * m, 0.22 * m, 0.06 * m, 0.09 * m, tint(hc, -0.2), 0, headZ);   // واقي الوجه
+        part(0, 0.025 * m, headZ + 0.215 * m, 0.25 * m, 0.27 * m, 0.03 * m, tint(hc, 0.22), 0, headZ); // حافة الخوذة
+        if (p.helmLvl === 3) part(0.085 * m, 0, headZ + 0.2 * m, 0.035 * m, 0.07 * m, 0.05 * m, '#1d1f22', 0, headZ); // قضيب جانبي
+      }
     } else if (hat === 'crown') {
       part(0, 0, headZ + 0.22 * m, 0.22 * m, 0.22 * m, 0.05 * m, '#ffc63d', 0, headZ);
       if (lod === 0) for (let i = -1; i <= 1; i++) part(i * 0.07 * m, 0, headZ + 0.28 * m, 0.04 * m, 0.04 * m, 0.07 * m, '#ffd75e', 0, headZ);
@@ -1557,11 +1748,22 @@ export class Renderer3D {
     if (rx < 1.2) return;
     if (s.x + rx < 0 || s.x - rx > this.w || s.y + ry < 0 || s.y - ry > this.h) return;
     const ctx = this.ctx;
+    const a = clamp(alpha === undefined ? 0.3 : alpha, 0, 1);
     ctx.save();
-    ctx.globalAlpha = clamp(alpha === undefined ? 0.3 : alpha, 0, 1);
-    ctx.fillStyle = '#000';
+    const cx = s.x + rx * 0.22;
+    // ظل ناعم متدرّج الحواف بدل بقعة سوداء صلبة (أقرب للواقع وأجمل بكثير)
+    if (rx > 6) {
+      const g = ctx.createRadialGradient(cx, s.y, rx * 0.2, cx, s.y, rx);
+      g.addColorStop(0, `rgba(0,0,0,${(a * 0.95).toFixed(3)})`);
+      g.addColorStop(0.65, `rgba(0,0,0,${(a * 0.55).toFixed(3)})`);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+    } else {
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#000';
+    }
     ctx.beginPath();
-    ctx.ellipse(s.x + rx * 0.22, s.y, rx, ry, 0, 0, 6.2832);
+    ctx.ellipse(cx, s.y, rx, ry, 0, 0, 6.2832);
     ctx.fill();
     ctx.restore();
     ctx.globalAlpha = 1;

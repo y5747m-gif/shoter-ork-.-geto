@@ -519,6 +519,22 @@
       <label class="check"><input type="checkbox" id="set-blood" checked /> تأثيرات الدم</label>
       <label class="check"><input type="checkbox" id="set-touch" /> أزرار اللمس (للهاتف)</label>
     </div>
+    <!-- 🌐 سيرفر الأونلاين: يجعل اللعب الأونلاين يعمل على الهواتف الحقيقية
+         حتى لو كانت اللعبة منشورة على استضافة ثابتة بلا سيرفر -->
+    <div class="server-box">
+      <div class="server-head">🌐 سيرفر الأونلاين</div>
+      <p class="hint">اكتب عنوان سيرفر اللعبة (مثل <code>ork-zone.onrender.com</code> أو <code>192.168.1.9:3000</code>) ليعمل الأونلاين على هاتفك من أي شبكة. اتركه فارغاً لاستخدام نفس رابط اللعبة.</p>
+      <div class="row">
+        <input type="text" id="set-server" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="عنوان السيرفر مثل ork-zone.example.com" />
+        <button class="btn-ghost" id="btn-server-test">🔌 فحص</button>
+        <button class="btn-gold" id="btn-server-save">حفظ العنوان</button>
+      </div>
+      <div class="server-status" id="server-status">جارٍ الفحص…</div>
+      <div class="row">
+        <button class="btn-ghost" id="btn-server-reset">↩️ استخدام رابط اللعبة نفسه</button>
+        <button class="btn-ghost" id="btn-server-copy">🔗 نسخ رابط دعوة الأصدقاء</button>
+      </div>
+    </div>
     <div class="row end"><button class="btn-gold" id="btn-settings-save">حفظ</button><button class="btn-ghost" id="btn-settings-close">إغلاق</button></div>
   </div>
 </div>
@@ -690,6 +706,7 @@
     update();
   })();
 </script>
+<script src="/config.js"></script>
 <script type="module" src="/js/main.js" onerror="window.__orkBootFail && window.__orkBootFail('تعذّر تحميل ملفات اللعبة (main.js)')"></script>
 </body>
 </html>

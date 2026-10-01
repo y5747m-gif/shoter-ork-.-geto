@@ -197,6 +197,7 @@ async function stage2() {
   item(up, `سيرفر اللعبة يعمل على المنفذ ${port}`, srvOut.slice(0, 160));
   if (up) {
     for (const [name, file] of [
+      ['عنوان سيرفر الأونلاين وCORS (server-url)', 'tests/serverurl.test.js'],
       ['الأونلاين عبر WebSocket (online)', 'tests/online.test.js'],
       ['العميل الكامل مع سيرفر حقيقي (client)', 'tests/client.test.js'],
     ]) {

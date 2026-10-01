@@ -7,6 +7,7 @@ import http from 'node:http';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 import { WebSocketServer } from 'ws';
 import * as store from './accounts.js';
 import * as rooms from './rooms.js';
@@ -273,10 +274,26 @@ process.on('unhandledRejection', (e) => { console.error('[unhandled]', (e && (e.
 process.on('SIGINT', () => { store.flush(); process.exit(0); });
 process.on('SIGTERM', () => { store.flush(); process.exit(0); });
 
+/** عناوين الشبكة المحلية — يكتبها اللاعب في هاتفه ليلعب أونلاين على نفس الواي‑فاي */
+function lanAddresses() {
+  const out = [];
+  try {
+    for (const list of Object.values(os.networkInterfaces())) {
+      for (const ni of (list || [])) {
+        if (ni.family === 'IPv4' && !ni.internal) out.push(ni.address);
+      }
+    }
+  } catch { }
+  return out;
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  ⚔️  ORK ZONE v${GAME.version}`);
   console.log(`  🎮  اللعبة:      http://localhost:${PORT}`);
   console.log(`  🌐  WebSocket:   ws://localhost:${PORT}/ws`);
+  for (const ip of lanAddresses()) {
+    console.log(`  📱  من الهاتف:   http://${ip}:${PORT}   (أو اكتب ${ip}:${PORT} في «الإعدادات ← سيرفر الأونلاين»)`);
+  }
   console.log(`  🗺️  الخرائط:     ${MAPS.map(m => m.ar).join(' · ')}`);
   console.log(`  🔫  الأسلحة:     ${Object.keys(WEAPONS).length}`);
   console.log(`  🧍  الشخصيات:    ${CHARACTERS.length}  |  ✨ الاسكنات: ${SKINS.length}\n`);

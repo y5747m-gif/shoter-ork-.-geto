@@ -2,7 +2,7 @@
  * ORK ZONE — client/main.js
  * نقطة التمهيد: تحميل الحساب، ربط الشبكة، تشغيل حلقة اللعب، وربط كل الأزرار.
  */
-import { API, Net } from './net.js';
+import { API, Net, Server, normalizeServer } from './net.js';
 import Audio2 from './audio.js';
 import { Session } from './game.js';
 import UI from './ui.js';
@@ -33,8 +33,10 @@ class App {
     this.prayer = new PrayerGuard(this);
     // عند اكتشاف غياب السيرفر (استضافة ثابتة): وضع محلي كامل + إيقاف محاولات الأونلاين
     API.onOffline = () => {
-      // إيقاف محاولات الأونلاين بصمت — لا نُظهر أي رسالة علوية تزعج اللاعب
-      try { this.net.stop(); } catch {}
+      // لا سيرفر على هذا العنوان: نعمل محلياً. إن كان اللاعب ضابطاً عنوان سيرفر
+      // بنفسه نُبقي محاولات إعادة الاتصال شغّالة (قد يكون السيرفر نائماً ويستيقظ).
+      try { if (!Server.base) this.net.stop(); } catch {}
+      try { this.updateServerUI(); } catch {}
     };
     // الجودة «تلقائي» هي الافتراضي: تكتشف قوة الجهاز ثم تتكيّف لحظياً مع معدل الإطارات
     // (الأجهزة الضعيفة و٣٠fps تنخفض لها الدقة تلقائياً، والأجهزة القوية ترتفع لها)
@@ -196,6 +198,13 @@ class App {
       const t0 = performance.now();
       try { this.audio.init(); } catch {}
       try { this.prayer.init(); } catch (e) { console.warn('[prayer] init', e); }
+      // 🌐 افحص سيرفر الأونلاين أولاً (العنوان قد يكون مختلفاً عن رابط الصفحة)
+      try { await Server.probe(this.isMobile ? 9000 : 6000); } catch {}
+      if (Server.status === 'ok') { API.offline = false; this.net.stopped = false; }
+      if (Server.status !== 'ok') {
+        API.offline = true;                              // لا سيرفر: اخدم كل شيء محلياً بلا انتظار
+        if (!Server.base) { try { this.net.stop(); } catch {} }
+      }
       // تحقق من الجلسة
       let ok = false;
       if (this.token) {
@@ -211,6 +220,7 @@ class App {
         } catch {}
       }
       try { this.net.connect(this.token); } catch {}
+      try { this.updateServerUI(); } catch {}
       try { this.bindNet(); } catch {}
       try { this.bindUI(); } catch {}
       try { this.applySettings(); } catch {}
@@ -303,6 +313,8 @@ class App {
     this.net.on('error', msg => this.ui.toast((msg && msg.error) || '⚠️ تعذر الاتصال بالسيرفر — تأكد من تشغيله', 'err'));
     this.net.on('youDied', msg => this.session.toastBig('☠️ ' + (msg.by ? 'أقصاك ' + msg.by : 'تم إقصاؤك')));
     this.net.on('ping', () => {});
+    this.net.on('open', () => { Server.status = 'ok'; API.offline = false; this.updateServerUI(); });
+    this.net.on('close', () => { this.updateServerUI(); });
     this.net.pingLoop();
   }
 
@@ -352,6 +364,14 @@ class App {
     });
     on('btn-settings-close', () => { $('scr-settings')?.classList.remove('active'); this.ui.showMenu(); });
     on('btn-settings-save', () => this.saveSettings());
+
+    // 🌐 سيرفر الأونلاين
+    on('btn-server-save', () => this.setServer($('set-server')?.value || ''));
+    on('btn-server-test', () => this.testServer());
+    on('btn-server-reset', () => { const el = $('set-server'); if (el) el.value = ''; this.setServer(''); });
+    on('btn-server-copy', () => this.copyInvite());
+    const srvEl = $('set-server');
+    if (srvEl) srvEl.onkeydown = (e) => { if (e.key === 'Enter') $('btn-server-save')?.click(); };
 
     for (const b of document.querySelectorAll('[data-buycur]')) {
       b.onclick = () => this.ui.toast('💎 الجواهر تُكسب من: المهام اليومية، باس المعركة، الفوز بالمباريات، عجلة الحظ', 'ok');
@@ -456,6 +476,7 @@ class App {
     if ($('set-tapfire')) $('set-tapfire').checked = !!this.settings.tapfire;
     if ($('set-touch')) $('set-touch').checked = !!this.settings.touch;
     if ($('set-blood')) $('set-blood').checked = this.settings.blood !== false;
+    if ($('set-server')) $('set-server').value = Server.base || '';
     if (this.session?.input) {
       this.session.input.autoFire = !!this.settings.autofire;
       this.session.input.sens = this.settings.sens ?? 1;
@@ -486,7 +507,92 @@ class App {
     this.ui.toast('تم حفظ الإعدادات ✓', 'ok');
   }
 
-  openSettings() { $('scr-settings')?.classList.add('active'); }
+  openSettings() {
+    $('scr-settings')?.classList.add('active');
+    const el = $('set-server');
+    if (el) el.value = Server.base || '';
+    this.updateServerUI();
+  }
+
+  /* ---------- 🌐 سيرفر الأونلاين (ليعمل الأونلاين على الهواتف الحقيقية) ---------- */
+  /** يحدّث سطر الحالة في الإعدادات حسب نتيجة آخر فحص + حالة WebSocket */
+  updateServerUI(text, kind) {
+    const el = $('server-status');
+    if (!el) return;
+    if (text) {
+      el.textContent = text;
+      el.className = 'server-status' + (kind ? ' ' + kind : '');
+      return;
+    }
+    const where = Server.base || (typeof location !== 'undefined' ? location.origin : '');
+    let msg, cls;
+    if (Server.status === 'ok') {
+      msg = (this.net.connected ? '✅ متصل بالأونلاين' : '✅ السيرفر يعمل — جارٍ الاتصال') + ' · ' + where;
+      cls = 'ok';
+    } else if (Server.status === 'mixed') {
+      msg = '⛔ ' + Server.message;
+      cls = 'err';
+    } else if (Server.status === 'down') {
+      msg = '📴 ' + Server.message + ' — اللعب الأوفلاين يعمل بالكامل';
+      cls = 'err';
+    } else {
+      msg = '… لم يُفحص بعد';
+      cls = 'wait';
+    }
+    el.textContent = msg;
+    el.className = 'server-status ' + cls;
+  }
+
+  /** حفظ عنوان سيرفر جديد ثم فحصه وإعادة الاتصال فوراً */
+  async setServer(raw) {
+    const base = Server.save(raw);
+    const el = $('set-server');
+    if (el) el.value = base;
+    this.updateServerUI('⏳ جارٍ الاتصال بالسيرفر…', 'wait');
+    const ok = await Server.probe(9000);
+    API.offline = !ok;
+    if (ok) {
+      this.net.restart(this.token);
+      this.ui.toast('🌐 تم الاتصال بسيرفر الأونلاين ✓', 'ok');
+      // أعد تحميل الحساب من السيرفر الجديد
+      try {
+        if (this.token) {
+          const r = await API.get('/api/profile?token=' + encodeURIComponent(this.token), 6000);
+          if (r && r.profile) { this.profile = r.profile; this.ui.updateProfile(); }
+        }
+      } catch {}
+    } else {
+      try { if (!Server.base) this.net.stop(); } catch {}
+      this.ui.toast('⚠️ ' + Server.message, 'err');
+    }
+    this.updateServerUI();
+    return ok;
+  }
+
+  /** زر «فحص»: يختبر العنوان المكتوب دون حفظه نهائياً إن فشل */
+  async testServer() {
+    const raw = $('set-server')?.value || '';
+    const prev = Server.base;
+    Server.base = normalizeServer(raw);
+    this.updateServerUI('⏳ جارٍ فحص السيرفر…', 'wait');
+    const ok = await Server.probe(9000);
+    if (!ok) Server.base = prev;
+    this.updateServerUI();
+    this.ui.toast(ok ? '✅ السيرفر يعمل — اضغط «حفظ العنوان»' : '❌ ' + Server.message, ok ? 'ok' : 'err');
+    return ok;
+  }
+
+  /** رابط دعوة يحمل عنوان السيرفر معه — يفتحه الصديق على هاتفه فيلعب أونلاين مباشرة */
+  async copyInvite() {
+    let url = typeof location !== 'undefined' ? location.origin + location.pathname : '';
+    if (Server.base) url += '?server=' + encodeURIComponent(Server.base);
+    try {
+      await navigator.clipboard.writeText(url);
+      this.ui.toast('🔗 تم نسخ رابط الدعوة', 'ok');
+    } catch {
+      this.ui.toast('🔗 الرابط: ' + url, 'ok');
+    }
+  }
 
   /* ---------- الحساب ---------- */
   async doGuest(name) {
@@ -557,7 +663,7 @@ class App {
     if (!this.net.connected && !API.offline) this.net.connect(this.token);
     if (!this.net.connected && !API.offline) await this.waitConnected(1500);
     if (!this.net.connected) {
-      this.ui.toast('🔒 غرف الأصدقاء تحتاج سيرفر اللعبة الأونلاين — غير متاح على هذا الرابط. جرّب اللعب الأوفلاين 📴', 'err');
+      this.ui.toast('🔒 غرف الأصدقاء تحتاج سيرفر أونلاين. افتح «الإعدادات ← 🌐 سيرفر الأونلاين» واكتب عنوان السيرفر، أو العب أوفلاين 📴', 'err');
       this.ui.showMenu();
       return;
     }
@@ -610,7 +716,7 @@ class App {
         this.audio.resume();
         const bots = +($('off-bots')?.value ?? 39);
         const diff = $('off-diff')?.value || 'normal';
-        this.ui.toast('⚠️ السيرفر الأونلاين غير متاح على هذا الرابط — بدأنا لك مباراة أوفلاين بنفس النمط والخريطة', 'err');
+        this.ui.toast('⚠️ لا يوجد سيرفر أونلاين على هذا الرابط — بدأنا مباراة أوفلاين. لتفعيل الأونلاين على هاتفك: الإعدادات ← 🌐 سيرفر الأونلاين', 'err');
         this.session.startOffline({ mode: modeId, mapId, bots, difficulty: diff });
         return;
       }

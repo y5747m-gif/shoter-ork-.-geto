@@ -8,3 +8,4 @@ data/
 # ملفات مؤقتة
 *.tmp.mjs
 .tmp/
+previews/shots/

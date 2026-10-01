@@ -447,6 +447,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .settings-grid label.check{flex-direction:row;align-items:center;gap:10px;color:var(--txt)}
 .settings-grid input[type=checkbox]{width:20px;height:20px;accent-color:var(--gold)}
 
+/* ---------- 🌐 صندوق سيرفر الأونلاين ---------- */
+.server-box{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(10,16,24,.5);display:flex;flex-direction:column;gap:10px}
+.server-box .server-head{font-weight:900;font-size:15px;color:var(--gold)}
+.server-box .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.server-box input[type=text]{flex:1 1 220px;min-width:0;direction:ltr;text-align:left}
+.server-box code{direction:ltr;display:inline-block;font-size:12px;color:#9fd8ff}
+.server-status{font-size:13px;font-weight:800;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,.3);border:1px solid var(--line);color:var(--dim)}
+.server-status.ok{color:#a8f0bd;border-color:#41e06a}
+.server-status.err{color:#ffb3ba;border-color:var(--danger)}
+.server-status.wait{color:#ffd166;border-color:#ffd166}
+
 /* ---------- التنبيهات ---------- */
 #toast-wrap{position:fixed;top:16px;inset-inline-start:50%;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
 .toast{background:rgba(12,18,26,.95);border:1px solid var(--line);border-radius:12px;padding:11px 20px;font-weight:800;box-shadow:var(--sh-lg);animation:toastIn .25s;max-width:90vw;text-align:center}
