@@ -306,10 +306,44 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .big-msg{position:absolute;top:38%;inset-inline-start:50%;transform:translateX(-50%);font-weight:900;font-size:clamp(24px,4.4vw,44px);color:var(--gold);text-shadow:0 4px 20px rgba(0,0,0,.9);pointer-events:none;opacity:0;transition:.3s;text-align:center}
 .big-msg.on{opacity:1}
 
-.jump-phase{position:absolute;inset:0;display:grid;place-items:center;background:rgba(4,7,11,.75);backdrop-filter:blur(3px);z-index:6}
-.jump-box{padding:18px;text-align:center;max-width:min(560px,94vw)}
+.jump-phase{
+  position:absolute;inset:0;display:grid;place-items:center;background:rgba(4,7,11,.75);backdrop-filter:blur(3px);z-index:6;
+  /* اترك مسافة أمان حول نافذة الهبوط حتى لا يختفي زر القفز تحت حواف/نوتش الشاشة */
+  padding:max(10px, env(safe-area-inset-top,0px)) max(10px, env(safe-area-inset-right,0px)) max(10px, env(safe-area-inset-bottom,0px)) max(10px, env(safe-area-inset-left,0px));
+  box-sizing:border-box;overflow:auto;overscroll-behavior:contain;
+}
+.jump-box{
+  padding:18px;text-align:center;max-width:min(560px,94vw);box-sizing:border-box;
+  max-height:calc(100vh - 20px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+  max-height:calc(100dvh - 20px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+  overflow:auto;overscroll-behavior:contain;
+}
 #dropmap{width:min(420px,84vw);height:auto;border-radius:12px;border:1px solid var(--line);background:#0a1016;cursor:crosshair}
 .jump-box p{color:var(--dim);font-size:13.5px}
+/* نافذة الهبوط في الوضع الأفقي: الخريطة بجانب التعليمات كي يبقى زر «اقفز الآن» داخل الشاشة */
+@media (orientation:landscape) and (max-height:560px){
+  .jump-phase{
+    padding:max(6px, env(safe-area-inset-top,0px)) max(8px, env(safe-area-inset-right,0px)) max(6px, env(safe-area-inset-bottom,0px)) max(8px, env(safe-area-inset-left,0px));
+    overflow:hidden;
+  }
+  .jump-box{
+    display:grid;grid-template-columns:auto minmax(180px,1fr);grid-template-areas:"map title" "map hint" "map jump";
+    align-items:center;gap:8px 14px;width:min(94vw,820px);max-width:94vw;
+    max-height:calc(100vh - 12px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+    max-height:calc(100dvh - 12px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));
+    padding:10px;text-align:center;overflow:visible;
+  }
+  .jump-box .title-gold{grid-area:title;margin:0;font-size:clamp(15px,5vh,22px);line-height:1.15}
+  .jump-box #dropmap{grid-area:map;width:min(42vw, calc(100vh - 34px), 340px);width:min(42vw, calc(100dvh - 34px), 340px);max-width:100%;justify-self:center;align-self:center}
+  .jump-box p{grid-area:hint;margin:0;font-size:clamp(11px,3.2vh,13px);line-height:1.45}
+  .jump-box #btn-jump{grid-area:jump;justify-self:stretch;min-height:clamp(38px,11vh,48px);padding:clamp(8px,2.8vh,12px) 16px;font-size:clamp(14px,4vh,17px)}
+}
+@media (orientation:landscape) and (max-height:360px){
+  .jump-box{grid-template-columns:auto minmax(150px,1fr);gap:6px 10px;padding:8px}
+  .jump-box #dropmap{width:min(38vw, calc(100vh - 28px), 300px);width:min(38vw, calc(100dvh - 28px), 300px)}
+  .jump-box p{font-size:11px;line-height:1.35}
+  .jump-box #btn-jump{min-height:36px;padding:7px 12px}
+}
 .scoreboard{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.6);z-index:7}
 .sb-inner{width:min(720px,94vw);max-height:80vh;overflow:auto;padding:18px}
 .sb-inner h3{margin:0 0 10px;color:var(--gold)}

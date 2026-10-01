@@ -93,7 +93,17 @@ console.log('\n🚫 ١) الوضع العمودي ممنوع على كل الأ�
   dom.window.close();
 }
 
-console.log('\n📐 ٢) تخطيط HUD اللمسي الأفقي الجديد (بابجي/فري فاير)');
+console.log('\n🪂 ٢) نافذة الهبوط مضبوطة للوضع الأفقي القصير');
+{
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  const compact = css.replace(/\s+/g, '');
+  ok('نافذة الهبوط لها مسافات أمان حتى لا يختفي زر القفز تحت الحواف', compact.includes('.jump-phase{') && compact.includes('env(safe-area-inset-bottom,0px)'));
+  ok('الوضع الأفقي القصير يحوّل نافذة الهبوط إلى تخطيط جانبي', compact.includes('@media(orientation:landscape)and(max-height:560px)') && compact.includes('grid-template-areas:"maptitle""maphint""mapjump"'));
+  ok('خريطة الهبوط تتقلص حسب ارتفاع الشاشة لا عرضها فقط', compact.includes('100dvh-34px') && compact.includes('grid-area:map'));
+  ok('زر «اقفز الآن» مثبت داخل الشبكة وبحجم قابل للضغط', compact.includes('grid-area:jump') && compact.includes('min-height:clamp(38px,11vh,48px)'));
+}
+
+console.log('\n📐 ٣) تخطيط HUD اللمسي الأفقي الجديد (بابجي/فري فاير)');
 {
   const dom = makePage({ w: 854, h: 400, touch: true });
   const doc = dom.window.document;
@@ -112,7 +122,7 @@ console.log('\n📐 ٢) تخطيط HUD اللمسي الأفقي الجديد (�
   dom.window.close();
 }
 
-console.log('\n📱 ٣) PWA: تثبيت اللعبة يفرض الوضع الأفقي');
+console.log('\n📱 ٤) PWA: تثبيت اللعبة يفرض الوضع الأفقي');
 {
   const mf = JSON.parse(fs.readFileSync(path.join(ROOT, 'public', 'manifest.webmanifest'), 'utf8'));
   ok('manifest موجود ومقروء', !!mf.name);
@@ -122,7 +132,7 @@ console.log('\n📱 ٣) PWA: تثبيت اللعبة يفرض الوضع الأ�
   ok('الصفحة تشير إلى manifest', HTML.includes('rel="manifest"'));
 }
 
-console.log('\n⚡ ٤) الجودة التلقائية والأداء على كل الأجهزة');
+console.log('\n⚡ ٥) الجودة التلقائية والأداء على كل الأجهزة');
 {
   const mainSrc = fs.readFileSync(path.join(ROOT, 'public', 'js', 'main.js'), 'utf8');
   const r3Src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'render3d.js'), 'utf8');
